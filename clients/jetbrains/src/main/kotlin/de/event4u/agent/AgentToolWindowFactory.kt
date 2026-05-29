@@ -17,7 +17,7 @@ import javax.swing.SwingUtilities
 class AgentToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val panel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
-            border = JBUI.Borders.empty(12)
+            border = JBUI.Borders.empty(PANEL_PADDING)
         }
         val status = JBLabel("Sidecar: starting…")
         panel.add(status, BorderLayout.NORTH)
@@ -41,7 +41,10 @@ class AgentToolWindowFactory : ToolWindowFactory {
                 if (healthy) "Sidecar healthy: pong" else "Sidecar unreachable"
             }.getOrElse { "Sidecar error: ${it.message}" }
             onResult(line)
-        }.apply { isDaemon = true; start() }
+        }.apply {
+            isDaemon = true
+            start()
+        }
     }
 
     /**
@@ -53,5 +56,10 @@ class AgentToolWindowFactory : ToolWindowFactory {
     private fun resolveSidecarPath(project: Project): String {
         val base = project.basePath ?: "."
         return "$base/packages/core/dist/server.js"
+    }
+
+    private companion object {
+        /** Tool-window content inset, in px. */
+        const val PANEL_PADDING = 12
     }
 }

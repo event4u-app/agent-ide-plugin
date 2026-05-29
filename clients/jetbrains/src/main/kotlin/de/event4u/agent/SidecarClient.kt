@@ -1,10 +1,6 @@
 package de.event4u.agent
 
 import de.event4u.agent.protocol.Envelope
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
@@ -13,6 +9,10 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.TimeUnit
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 
 /**
  * Spawns the Node Agent Core sidecar and exposes request/response calls over
@@ -52,7 +52,10 @@ class SidecarClient(
                         ?.let { env -> pending.remove(env.messageId)?.put(env) }
                 }
             }
-        }.apply { isDaemon = true; start() }
+        }.apply {
+            isDaemon = true
+            start()
+        }
     }
 
     /** Send a request and block up to [timeoutMs] for the correlated reply. */
