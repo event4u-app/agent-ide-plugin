@@ -34,11 +34,7 @@ class Chip(
 
     init {
         font = Theme.Fonts.small()
-        foreground =
-            when (variant) {
-                Variant.COMMAND -> JBUI.CurrentTheme.Button.foreground()
-                else -> Theme.Colors.primaryText()
-            }
+        foreground = Theme.Colors.primaryText()
         border = JBUI.Borders.empty(Theme.Space.XXS, Theme.Space.SM)
         isOpaque = false
         cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)

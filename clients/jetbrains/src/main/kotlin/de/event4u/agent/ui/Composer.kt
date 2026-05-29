@@ -64,7 +64,7 @@ class Composer(
 
     private val chipRail =
         JBPanel<JBPanel<*>>().apply {
-            layout = WrapLayout(align = WrapLayout.LEFT)
+            layout = WrapLayout(align = java.awt.FlowLayout.LEFT)
             isOpaque = false
             border = JBUI.Borders.empty(Theme.Space.XS)
         }
@@ -102,7 +102,7 @@ class Composer(
     // paperclip ships disabled until the file picker is wired (Phase 4 host pass).
     private val paperclipButton =
         IconButton.create(
-            AllIcons.General.Attachment,
+            AllIcons.Actions.Upload,
             tooltip = "Attach file or image",
             enabled = false,
             onClick = {},

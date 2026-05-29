@@ -16,7 +16,7 @@ import java.awt.RenderingHints
  * Spec: see road-to-mvp-ui-design.md § C-3 (composer container), C-2
  * (welcome card), and the radius scale in Theme.
  */
-class RoundedPanel
+open class RoundedPanel
     @JvmOverloads
     constructor(
         layout: LayoutManager? = null,
