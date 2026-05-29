@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "out",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "verbatimModuleSyntax": false,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

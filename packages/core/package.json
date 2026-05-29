@@ -1,0 +1,20 @@
+{
+  "name": "@event4u-agent/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "bin": {
+    "event4u-agent-core": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/server.js --banner:js=\"#!/usr/bin/env node\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@event4u-agent/protocol": "workspace:*",
+    "@event4u-agent/shared": "workspace:*",
+    "zod": "^3.24.1"
+  }
+}

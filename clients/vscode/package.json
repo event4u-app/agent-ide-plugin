@@ -1,0 +1,58 @@
+{
+  "name": "event4u-agent-vscode",
+  "displayName": "event4u Agent",
+  "description": "event4u Agent — AI coding assistant powered by your agent-config tree.",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "publisher": "event4u",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "event4u.openChat",
+        "title": "event4u Agent: Open Chat"
+      }
+    ],
+    "configuration": {
+      "title": "event4u Agent",
+      "properties": {
+        "event4u.provider": {
+          "type": "string",
+          "enum": [
+            "anthropic"
+          ],
+          "default": "anthropic",
+          "description": "LLM provider (only Anthropic in MVP)."
+        },
+        "event4u.defaultModel": {
+          "type": "string",
+          "default": "claude-sonnet-4-6",
+          "description": "Default model id."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=out/extension.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@event4u-agent/protocol": "workspace:*",
+    "@event4u-agent/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0"
+  }
+}
