@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.0",
     "@event4u-agent/protocol": "workspace:*",
     "@event4u-agent/shared": "workspace:*",
     "yaml": "^2.6.1",

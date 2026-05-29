@@ -11,6 +11,13 @@ tasks:
     cmds:
       - pnpm install
 
+  setup:
+    desc: One-command bootstrap after checkout — deps, build, JetBrains toolchain
+    cmds:
+      - task: install
+      - task: build
+      - task: jetbrains:setup
+
   build:
     desc: Build all TypeScript packages + the VS Code extension
     cmds:
@@ -51,17 +58,37 @@ tasks:
       - task: test
 
   # --- JetBrains client (requires JDK 17 + Gradle wrapper; not runnable without a JVM) ---
-  jetbrains:check:
-    desc: Run the JetBrains plugin checks (requires JDK 17)
+  jetbrains:setup:
+    desc: One-time local toolchain for the JetBrains client — JDK 17, Gradle, wrapper (macOS/Homebrew)
     dir: clients/jetbrains
     cmds:
-      - ./gradlew check
+      - |
+        set -e
+        command -v brew >/dev/null 2>&1 || { echo "❌ Homebrew required — see https://brew.sh"; exit 1; }
+        brew list openjdk@17 >/dev/null 2>&1 || brew install openjdk@17
+        command -v gradle >/dev/null 2>&1 || brew install gradle
+        if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+          echo "Bootstrapping Gradle wrapper 8.11.1…"
+          JAVA_HOME="$(brew --prefix openjdk@17)/libexec/openjdk.jdk/Contents/Home" \
+            gradle wrapper --gradle-version 8.11.1
+        fi
+        echo "✅ JetBrains client ready — run: task jetbrains:runIde"
+
+  jetbrains:check:
+    desc: Run the JetBrains plugin checks (compile + detekt + ktlint; needs JDK 17)
+    dir: clients/jetbrains
+    cmds:
+      - |
+        export JAVA_HOME="${JAVA_HOME:-$(brew --prefix openjdk@17 2>/dev/null)/libexec/openjdk.jdk/Contents/Home}"
+        ./gradlew check
 
   jetbrains:runIde:
-    desc: Launch a sandbox IDE with the plugin installed (requires JDK 17)
+    desc: Launch a sandbox IDE with the plugin installed (needs JDK 17 + GUI)
     dir: clients/jetbrains
     cmds:
-      - ./gradlew runIde
+      - |
+        export JAVA_HOME="${JAVA_HOME:-$(brew --prefix openjdk@17 2>/dev/null)/libexec/openjdk.jdk/Contents/Home}"
+        ./gradlew runIde
 
   # --- VS Code client ---
   vscode:build:

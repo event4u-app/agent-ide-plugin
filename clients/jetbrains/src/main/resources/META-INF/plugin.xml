@@ -5,7 +5,7 @@
 
     <description><![CDATA[
         event4u Agent — AI coding assistant powered by your agent-config tree.
-        MVP skeleton: a tool window backed by a Node sidecar over NDJSON/stdio.
+        Tool window chat + cost-tracking statusbar widget + Anthropic / Claude CLI mode.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -15,5 +15,25 @@
             id="event4u-agent"
             anchor="right"
             factoryClass="de.event4u.agent.AgentToolWindowFactory"/>
+        <statusBarWidgetFactory
+            id="event4u-agent.status"
+            implementation="de.event4u.agent.statusbar.AgentStatusBarWidgetFactory"
+            order="last"/>
+        <applicationConfigurable
+            parentId="tools"
+            instance="de.event4u.agent.settings.AgentConfigurable"
+            id="event4u-agent.settings"
+            displayName="event4u Agent"/>
+        <applicationService serviceImplementation="de.event4u.agent.settings.AgentSettings"/>
     </extensions>
+
+    <actions>
+        <action
+            id="event4u-agent.askSelection"
+            class="de.event4u.agent.actions.AskAboutSelectionAction"
+            text="Ask event4u about Selection">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="control shift A"/>
+        </action>
+    </actions>
 </idea-plugin>

@@ -16,6 +16,8 @@ coverage/
 
 # Kotlin / Gradle (clients/jetbrains)
 .gradle/
+.kotlin/
+.intellijPlatform/
 build/
 !gradle/
 *.iml

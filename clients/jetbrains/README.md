@@ -5,6 +5,15 @@ Agent Core sidecar over NDJSON/stdio (ADR-003).
 
 ## Prerequisites
 
+On macOS the fastest path is the one-time bootstrap task — it installs JDK 17 +
+Gradle via Homebrew and generates the wrapper jar:
+
+```bash
+task jetbrains:setup    # or `task setup` from the repo root for the full bootstrap
+```
+
+Manual / non-Homebrew setup:
+
 - **JDK 17** (the plugin targets JVM 17 via `jvmToolchain(17)`).
 - **Gradle wrapper jar.** This repo ships `gradle/wrapper/gradle-wrapper.properties`
   but not the binary `gradle-wrapper.jar`. Generate it once with a Gradle
