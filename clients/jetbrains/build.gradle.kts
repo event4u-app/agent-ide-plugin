@@ -20,8 +20,12 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // PhpStorm 2024.2 is the demo target; the platform module set is shared.
-        create(IntelliJPlatformType.IntellijIdeaCommunity, "2024.2")
+        // Platform pin bumped from 2024.2 → 2025.1 so the sandbox IDE's
+        // GradleJvmSupportMatrix can parse Java 25 versions in its bundled
+        // jvm-compat data file. 2024.2 was released before Java 25 (Sept
+        // 2025) and its parser throws `IllegalArgumentException: 25` on
+        // startup — non-fatal but the error dialog is noisy.
+        create(IntelliJPlatformType.IntellijIdeaCommunity, "2025.1")
         instrumentationTools()
     }
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
@@ -40,8 +44,9 @@ intellijPlatform {
         name = "event4u Agent"
         version = project.version.toString()
         ideaVersion {
-            // Lowered to "241" only if the IDE survey finds a 2024.1 user (ADR-003).
-            sinceBuild = "242"
+            // Raised from "242" to "251" (2025.1) together with the platform
+            // dep bump — see dependencies{} note above on Java 25 parsing.
+            sinceBuild = "251"
             untilBuild = provider { null }
         }
     }
