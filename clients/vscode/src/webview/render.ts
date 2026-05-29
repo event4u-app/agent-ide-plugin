@@ -50,23 +50,21 @@ export function renderMessage(message: ChatMessage): string {
 }
 
 function renderUser(message: UserMessage): string {
-  return `<section class="event4u-card event4u-card--user" data-message-id="${message.id}">
+  return `<section class="e4u-card e4u-card--user" data-message-id="${message.id}">
     <header>You</header>
-    <div class="event4u-card__body">${markdownToHtml(message.text)}</div>
+    <div class="e4u-card__body">${markdownToHtml(message.text)}</div>
   </section>`;
 }
 
 function renderAssistant(message: AssistantMessage): string {
-  const streamingTag = message.streaming
-    ? ' <span class="event4u-streaming-tag">streaming</span>'
-    : '';
+  const streamingTag = message.streaming ? ' <span class="e4u-streaming-tag">streaming</span>' : '';
   const body =
     message.text.length > 0
-      ? `<div class="event4u-card__body">${markdownToHtml(message.text)}</div>`
+      ? `<div class="e4u-card__body">${markdownToHtml(message.text)}</div>`
       : '';
   const tools = message.toolCalls.map(renderToolCall).join('');
   const footer = message.costFooter ? renderCostFooter(message.costFooter) : '';
-  return `<section class="event4u-card event4u-card--assistant" data-message-id="${message.id}">
+  return `<section class="e4u-card e4u-card--assistant" data-message-id="${message.id}">
     <header>Agent${streamingTag}</header>
     ${body}${tools}${footer}
   </section>`;
@@ -76,19 +74,19 @@ function renderHalt(message: HaltMessage): string {
   const options = message.options
     .map(
       (o) =>
-        `<button class="event4u-halt-option" data-action="halt-answer" data-halt-id="${escapeHtml(message.id)}" data-option-id="${escapeHtml(o.id)}" title="${escapeHtml(o.description ?? '')}">${escapeHtml(o.label)}</button>`,
+        `<button class="e4u-halt-option" data-action="halt-answer" data-halt-id="${escapeHtml(message.id)}" data-option-id="${escapeHtml(o.id)}" title="${escapeHtml(o.description ?? '')}">${escapeHtml(o.label)}</button>`,
     )
     .join('');
   const freeText = message.allowFreeText
-    ? `<form data-action="halt-text" data-halt-id="${escapeHtml(message.id)}">
+    ? `<form class="e4u-halt-text" data-action="halt-text" data-halt-id="${escapeHtml(message.id)}">
         <input type="text" name="text" placeholder="Or type a free-text answer…" />
         <button type="submit">Send</button>
       </form>`
     : '';
-  return `<section class="event4u-card event4u-card--halt" data-message-id="${message.id}">
+  return `<section class="e4u-card e4u-card--halt" data-message-id="${message.id}">
     <header>Agent halted</header>
     <p>${escapeHtml(message.question)}</p>
-    <div class="event4u-halt-options">${options}</div>
+    <div class="e4u-halt-options">${options}</div>
     ${freeText}
   </section>`;
 }
@@ -96,14 +94,14 @@ function renderHalt(message: HaltMessage): string {
 function renderToolCall(call: ToolCallSummary): string {
   const mark = call.outcome === 'ok' ? '✅' : call.outcome === 'error' ? '❌' : '…';
   const args = truncate(call.argsPreview, 60);
-  return `<details class="event4u-tool-call event4u-tool-call--${call.outcome}">
+  return `<details class="e4u-tool-call e4u-tool-call--${call.outcome}">
     <summary>${mark} ${escapeHtml(call.name)}(${escapeHtml(args)})</summary>
     ${call.output.length > 0 ? `<pre><code>${escapeHtml(call.output)}</code></pre>` : ''}
   </details>`;
 }
 
 function renderCostFooter(footer: CostFooter): string {
-  return `<footer class="event4u-cost">${escapeHtml(formatStepFooter(footer))}</footer>`;
+  return `<footer class="e4u-cost">${escapeHtml(formatStepFooter(footer))}</footer>`;
 }
 
 function truncate(text: string, max: number): string {
@@ -111,7 +109,7 @@ function truncate(text: string, max: number): string {
 }
 
 function statusClass(snapshot: ChatModelSnapshot): string {
-  if (!snapshot.sidecarHealthy) return 'event4u-status--error';
-  if (snapshot.streamingSummary !== null) return 'event4u-status--streaming';
-  return 'event4u-status--ready';
+  if (!snapshot.sidecarHealthy) return 'e4u-status--error';
+  if (snapshot.streamingSummary !== null) return 'e4u-status--streaming';
+  return 'e4u-status--ready';
 }
