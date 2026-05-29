@@ -3,71 +3,93 @@ package de.event4u.agent
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBPanel
-import com.intellij.util.ui.JBUI
-import java.awt.BorderLayout
-import javax.swing.SwingUtilities
+import de.event4u.agent.chat.ChatController
+import de.event4u.agent.chat.ChatModelSnapshot
+import de.event4u.agent.chat.ChatPanel
+import de.event4u.agent.chat.ConversationMode
 
 /**
- * Placeholder tool window for the MVP skeleton (T-103). Shows a sidecar-health
- * line produced by pinging the Node Agent Core (T-105). The Compose/JCEF chat
- * UI replaces this panel in Sprint 2 (ADR-003 / T-202).
+ * Tool window factory — installs the Swing chat panel (T-202) backed by a
+ * [PlaceholderChatController] until the real sidecar-backed controller lands
+ * with the project service that owns [SidecarClient].
+ *
+ * The Compose/Jewel migration is deferred to v1.0 once jewel 1.0 ships and
+ * `StatusBarWidget` integration matures — see the council verdict at
+ * `agents/runtime/council/responses/jetbrains-ui-2026-05-29.json`.
  */
 class AgentToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(
         project: Project,
         toolWindow: ToolWindow,
     ) {
-        val panel =
-            JBPanel<JBPanel<*>>(BorderLayout()).apply {
-                border = JBUI.Borders.empty(PANEL_PADDING)
-            }
-        val status = JBLabel("Sidecar: starting…")
-        panel.add(status, BorderLayout.NORTH)
-
-        pingSidecarAsync(project) { line ->
-            SwingUtilities.invokeLater { status.text = line }
-        }
-
+        val controller = PlaceholderChatController(project)
+        val panel = ChatPanel(controller)
         val content = toolWindow.contentManager.factory.createContent(panel, "", false)
         toolWindow.contentManager.addContent(content)
+        controller.pingSidecarAsync()
+    }
+}
+
+/**
+ * Minimal controller that surfaces sidecar-health but routes user input to
+ * stderr until the project service lands. Real implementation lives in the
+ * follow-up wiring task (see road-to-mvp-ui-finish.md, T-411a / T-412 host
+ * integration).
+ */
+internal class PlaceholderChatController(private val project: Project) : ChatController {
+    private var mode = ConversationMode.API
+    private var healthy = false
+    override var onModelChange: (ChatModelSnapshot) -> Unit = {}
+
+    override fun snapshot(): ChatModelSnapshot =
+        ChatModelSnapshot(
+            messages = emptyList(),
+            mode = mode,
+            streamingSummary = null,
+            sidecarHealthy = healthy,
+        )
+
+    override fun send(text: String) {
+        System.err.println("event4u-agent: user-turn placeholder for ${text.take(MAX_LOG)}…")
     }
 
-    private fun pingSidecarAsync(
-        project: Project,
-        onResult: (String) -> Unit,
-    ) {
+    override fun requestStop() {
+        // No streaming yet — placeholder.
+    }
+
+    override fun isStreaming(): Boolean = false
+
+    override fun currentMode(): ConversationMode = mode
+
+    override fun setMode(mode: ConversationMode) {
+        this.mode = mode
+        onModelChange(snapshot())
+    }
+
+    fun pingSidecarAsync() {
         Thread {
-            val serverPath = resolveSidecarPath(project)
-            val line =
+            val serverPath = resolveSidecarPath()
+            healthy =
                 runCatching {
                     val client = SidecarClient(serverPath)
                     client.start()
-                    val healthy = client.healthy()
+                    val ok = client.healthy()
                     client.dispose()
-                    if (healthy) "Sidecar healthy: pong" else "Sidecar unreachable"
-                }.getOrElse { "Sidecar error: ${it.message}" }
-            onResult(line)
+                    ok
+                }.getOrDefault(false)
+            onModelChange(snapshot())
         }.apply {
             isDaemon = true
             start()
         }
     }
 
-    /**
-     * Dev resolution: the sidecar bundle lives in the sibling `packages/core`
-     * workspace. Packaging the sidecar into the plugin distribution with a
-     * bundled Node is Sprint 4 (T-406) — the same tricky-problem note as the
-     * VS Code client.
-     */
-    private fun resolveSidecarPath(project: Project): String {
+    private fun resolveSidecarPath(): String {
         val base = project.basePath ?: "."
         return "$base/packages/core/dist/server.js"
     }
 
     private companion object {
-        /** Tool-window content inset, in px. */
-        const val PANEL_PADDING = 12
+        const val MAX_LOG = 80
     }
 }
