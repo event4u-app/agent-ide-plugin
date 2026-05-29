@@ -30,3 +30,4 @@ build/
 /* Files to ignore */
 /agents/analysis/sweepai/
 /agents/analysis/intellij-augment/
+/agents/tmp/
