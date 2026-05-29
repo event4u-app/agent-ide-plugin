@@ -44,10 +44,9 @@ jobs:
   jetbrains:
     name: jetbrains (gradle check)
     runs-on: ubuntu-latest
-    # The Kotlin client is an authored skeleton not yet compiled on a JVM
-    # (the authoring environment had no JDK). Kept non-blocking until the
-    # first green JDK-17 run confirms it; flip `continue-on-error` off then.
-    continue-on-error: true
+    # Blocking gate: the Kotlin client compiles and passes detekt + ktlint on
+    # JDK 17 (confirmed green on CI 2026-05-29). runIde / IDE-install checks
+    # still need a human-driven IDE and are out of CI scope.
     steps:
       - uses: actions/checkout@v4
 
