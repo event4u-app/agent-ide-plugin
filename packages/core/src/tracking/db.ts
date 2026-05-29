@@ -20,7 +20,7 @@ import { z } from 'zod';
  * for audit-trace.
  */
 
-export const ActivitySchema = z.enum(['agent', 'chat', 'cli-agent', 'skill', 'system']);
+export const ActivitySchema = z.enum(['agent', 'chat', 'cli-agent', 'skill', 'system', 'review']);
 export type Activity = z.infer<typeof ActivitySchema>;
 
 export const StepEventSchema = z.object({
