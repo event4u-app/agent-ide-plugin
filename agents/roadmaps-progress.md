@@ -6,35 +6,45 @@
 
 ## Overall
 
-**8 / 206 steps done · 4%**
+**29 / 201 steps done · 14%**
 
 ```text
-██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   4%
+██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   14%
 ```
 
 ## Open roadmaps
 
 | # | Roadmap | Phases | Steps | Open | Done | Deferred | Cancelled | Progress |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| 1 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 57 | 8 | 2 | 0 | █░░░░░░░░░ 12% |
-| 2 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 119 | 119 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
-| 3 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 22 | 22 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
+| 1 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 26 | 26 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
+| 2 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 29 | 11 | 0 | █████░░░░░ 52% |
+| 3 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 119 | 119 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 
 ---
 
 ## Per-roadmap phase breakdown
 
+### [road-to-multi-project.md](roadmaps/road-to-multi-project.md)
+
+**Multi-Project / Multi-Root Workspace Support** — 0 / 26 done (0%)
+
+| # | Phase | State | Open | Done | Deferred | Cancelled | % |
+|---|---|---|---:|---:|---:|---:|---:|
+| A | Core: multi-root walker + root-partitioned index (≈ 2 weeks) | ⬜ not started | 8 | 0 | 0 | 0 | 0% |
+| B | Protocol + both clients: enumerate & sync roots (≈ 2 weeks) | ⬜ not started | 7 | 0 | 0 | 0 | 0% |
+| C | Chat UI: multiselect picker + scope persistence (≈ 1.5 weeks) | ⬜ not started | 11 | 0 | 0 | 0 | 0% |
+
 ### [road-to-mvp.md](roadmaps/road-to-mvp.md)
 
-**MVP — Internal demo + dogfooding** — 8 / 65 done (12%)
+**MVP — Internal demo + dogfooding** — 29 / 56 done (52%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
 | 1 | Skeleton & RPC baseline (3 weeks) | 🟡 in progress | 4 | 5 | 2 | 0 | 56% |
-| 2 | Chat with one provider (3 weeks) | 🟡 in progress | 11 | 2 | 0 | 0 | 15% |
-| 3 | Minimal 2-step tool-call loop + single-file edit (3 weeks) | ⬜ not started | 10 | 0 | 0 | 0 | 0% |
-| 4 | agent-config v0 + Claude CLI mode + Tracking (4 weeks) | 🟡 in progress | 20 | 1 | 0 | 0 | 5% |
-| 5 | Buffer (1-3 weeks) | ⬜ not started | 12 | 0 | 0 | 0 | 0% |
+| 2 | Chat with one provider (3 weeks) | 🟡 in progress | 5 | 4 | 4 | 0 | 44% |
+| 3 | Minimal 2-step tool-call loop + single-file edit (3 weeks) | 🟡 in progress | 4 | 6 | 0 | 0 | 60% |
+| 4 | agent-config v0 + Claude CLI mode + Tracking (4 weeks) | 🟡 in progress | 6 | 12 | 3 | 0 | 67% |
+| 5 | Buffer (1-3 weeks) | 🟡 in progress | 8 | 2 | 2 | 0 | 20% |
 
 ### [road-to-v1-0.md](roadmaps/road-to-v1-0.md)
 
@@ -53,14 +63,4 @@
 | 13 | UX polish + late-arriving items (3 weeks) | ⬜ not started | 10 | 0 | 0 | 0 | 0% |
 | 14 | Pricing Book signing + Telemetry + Docs (3 weeks) | ⬜ not started | 12 | 0 | 0 | 0 | 0% |
 | 15 | Buffer + Beta Release (2-3 weeks) | ⬜ not started | 14 | 0 | 0 | 0 | 0% |
-
-### [road-to-multi-project.md](roadmaps/road-to-multi-project.md)
-
-**Multi-Project / Multi-Root Workspace Support** — 0 / 22 done (0%)
-
-| # | Phase | State | Open | Done | Deferred | Cancelled | % |
-|---|---|---|---:|---:|---:|---:|---:|
-| A | Core: multi-root walker + root-partitioned index (≈ 2 weeks) | ⬜ not started | 8 | 0 | 0 | 0 | 0% |
-| B | Protocol + both clients: enumerate & sync roots (≈ 2 weeks) | ⬜ not started | 7 | 0 | 0 | 0 | 0% |
-| C | Chat UI: multiselect picker + scope persistence (≈ 1.5 weeks) | ⬜ not started | 7 | 0 | 0 | 0 | 0% |
 
