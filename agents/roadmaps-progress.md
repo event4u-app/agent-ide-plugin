@@ -6,17 +6,17 @@
 
 ## Overall
 
-**53 / 346 steps done · 15%**
+**85 / 346 steps done · 25%**
 
 ```text
-██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   15%
+██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   25%
 ```
 
 ## Open roadmaps
 
 | # | Roadmap | Phases | Steps | Open | Done | Deferred | Cancelled | Progress |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| 1 | [road-to-code-review.md](roadmaps/road-to-code-review.md) | 5 | 48 | 48 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
+| 1 | [road-to-code-review.md](roadmaps/road-to-code-review.md) | 5 | 48 | 12 | 32 | 0 | 4 | ███████░░░ 67% |
 | 2 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 30 | 30 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 | 3 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 7 | 67 | 48 | 18 | 0 | 1 | ███░░░░░░░ 27% |
 | 4 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 18 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
@@ -29,15 +29,15 @@
 
 ### [road-to-code-review.md](roadmaps/road-to-code-review.md)
 
-**Code-Review capability — IDE-local review with self-consistency** — 0 / 48 done (0%)
+**Code-Review capability — IDE-local review with self-consistency** — 32 / 48 done (67%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
-| 1 | Diff ingestion + review data model (1 week) | ⬜ not started | 8 | 0 | 0 | 0 | 0% |
-| 2 | Staged review-prompt chain (1.5 weeks) | ⬜ not started | 10 | 0 | 0 | 0 | 0% |
-| 3 | Group-vote self-consistency filter (1 week) | ⬜ not started | 8 | 0 | 0 | 0 | 0% |
-| 4 | IDE surfacing: diagnostics + review action (1 week) | ⬜ not started | 9 | 0 | 0 | 0 | 0% |
-| 5 | Config, workspace rules, polish (0.5–1 week) | ⬜ not started | 13 | 0 | 0 | 0 | 0% |
+| 1 | Diff ingestion + review data model (1 week) | ✅ done | 0 | 8 | 0 | 0 | 100% |
+| 2 | Staged review-prompt chain (1.5 weeks) | ✅ done | 0 | 9 | 0 | 1 | 100% |
+| 3 | Group-vote self-consistency filter (1 week) | ✅ done | 0 | 8 | 0 | 0 | 100% |
+| 4 | IDE surfacing: diagnostics + review action (1 week) | 🔄 in progress | 8 | 0 | 0 | 1 | 0% |
+| 5 | Config, workspace rules, polish (0.5–1 week) | 🔄 in progress | 4 | 7 | 0 | 2 | 54% |
 
 ### [road-to-multi-project.md](roadmaps/road-to-multi-project.md)
 
