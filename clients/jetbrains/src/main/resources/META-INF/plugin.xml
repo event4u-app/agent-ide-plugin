@@ -1,0 +1,19 @@
+<idea-plugin>
+    <id>de.event4u.agent</id>
+    <name>event4u Agent</name>
+    <vendor email="dev@event4u.de" url="https://event4u.de">event4u</vendor>
+
+    <description><![CDATA[
+        event4u Agent — AI coding assistant powered by your agent-config tree.
+        MVP skeleton: a tool window backed by a Node sidecar over NDJSON/stdio.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+            id="event4u-agent"
+            anchor="right"
+            factoryClass="de.event4u.agent.AgentToolWindowFactory"/>
+    </extensions>
+</idea-plugin>
