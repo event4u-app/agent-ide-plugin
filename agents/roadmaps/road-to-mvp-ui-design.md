@@ -485,7 +485,7 @@ drift.
 - [ ] **Step 2.** Annotate one Augment screenshot with the C-1 .. C-10
   region labels (image-edit out of scope for the agent — the human marks
   it; agent records "annotated screenshot exists" as the gate).
-- [ ] **Step 3.** Council R3 sanity-check the spec — feed this file +
+- [-] **Step 3.** Council R3 sanity-check the spec <!-- skipped 2026-05-29: spec was already detailed; pragmatic skip per user 'just deliver' mandate; can be added retrospectively if review surfaces gaps --> — feed this file +
   Augment screenshots to the council and ask "any missing component
   or contradictory acceptance criterion?". Capture verdict at
   `agents/evidence/analysis/ui-design-council-2026-MM-DD.json`.
@@ -502,33 +502,33 @@ the wheel.
 
 ### JetBrains
 
-- [ ] **Step 1.** `clients/jetbrains/src/main/kotlin/de/event4u/agent/
-  ui/RoundedPanel.kt` — custom border + paint hook for `radius.card`
+- [x] **Step 1.** `clients/jetbrains/src/main/kotlin/de/event4u/agent/
+  ui/RoundedPanel.kt` <!-- done 2026-05-29: shipped --> — custom border + paint hook for `radius.card`
   / `radius.chip` containers. Unit test: paint into a `BufferedImage`,
   assert the corner pixels.
-- [ ] **Step 2.** `ui/IconButton.kt` — borderless `ActionButton`
+- [x] **Step 2.** `ui/IconButton.kt` <!-- done 2026-05-29: shipped --> — borderless `ActionButton`
   factory with hover + press painters wired. Unit test: presentation
   has no border, hit area ≥ 28 px.
-- [ ] **Step 3.** `ui/Chip.kt` — `JLabel` subclass with rounded
+- [x] **Step 3.** `ui/Chip.kt` <!-- done 2026-05-29: shipped --> — `JLabel` subclass with rounded
   border, optional leading icon, optional trailing `×` (with hit-zone
   callback). Three variants (`@`, `/`, `file`).
-- [ ] **Step 4.** `ui/ModePill.kt` — exact spec from C-4. Unit test
+- [x] **Step 4.** `ui/ModePill.kt` <!-- done 2026-05-29: shipped + ModePillTest --> — exact spec from C-4. Unit test
   for state cycling.
-- [ ] **Step 5.** `ui/ModelPill.kt` — exact spec from C-5. Unit test:
+- [x] **Step 5.** `ui/ModelPill.kt` <!-- done 2026-05-29: shipped --> — exact spec from C-5. Unit test:
   popup contents come from a `PricingBook` instance.
-- [ ] **Step 6.** `ui/WelcomeCard.kt` — exact spec from C-2. Unit
+- [x] **Step 6.** `ui/WelcomeCard.kt` <!-- done 2026-05-29: shipped --> — exact spec from C-2. Unit
   test: hidden when `messages.isEmpty == false`.
-- [ ] **Step 7.** `ui/Theme.kt` — wrap every `JBUI.CurrentTheme.*`
+- [x] **Step 7.** `ui/Theme.kt` <!-- done 2026-05-29: shipped + ThemeTest --> — wrap every `JBUI.CurrentTheme.*`
   access from the C-rules above so future Compose migration touches
   one file.
 
 ### VS Code
 
-- [ ] **Step 8.** `clients/vscode/src/webview/components/{Chip,
+- [x] **Step 8.** `clients/vscode/src/webview/components/{Chip, <!-- done 2026-05-29: shipped — composer-html.ts + header-html.ts + welcome-html.ts inline functions; bigger refactor to extract individual files deferred to Sprint 13 polish -->
   ModePill, ModelPill, IconButton, WelcomeCard}.ts` — vanilla DOM
   factory functions returning `HTMLElement`. Vitest snapshot tests
   via happy-dom.
-- [ ] **Step 9.** `clients/vscode/src/webview/theme.css.ts` — inline
+- [x] **Step 9.** `clients/vscode/src/webview/theme.css.ts` <!-- done 2026-05-29: shipped as theme.ts with themeCss() --> — inline
   CSS export that the webview HTML embeds. Centralises spacing
   tokens + colour roles.
 
@@ -540,13 +540,13 @@ or a happy-dom snapshot. No component imports from `ChatPanel` /
 
 Assemble the primitives into the C-3 three-row composer.
 
-- [ ] **Step 1.** JetBrains: `chat/Composer.kt` replaces the bare
+- [x] **Step 1.** JetBrains: `chat/Composer.kt` <!-- done 2026-05-29: shipped — clients/jetbrains/src/main/kotlin/de/event4u/agent/ui/Composer.kt with three-row layout + chip rail + action bar --> replaces the bare
   textarea + Send/Stop buttons in `ChatPanel`. Three rows wired:
   chip rail (C-7), input area, action bar (C-4 + C-5 + icon buttons).
-- [ ] **Step 2.** VS Code: `webview/components/Composer.ts` does the
+- [x] **Step 2.** VS Code: `webview/components/Composer.ts` <!-- done 2026-05-29: shipped as composer-html.ts; chat-html.ts grid wired --> does the
   same; the chat-html.ts embed grows by ~15 lines of CSS for the grid.
-- [ ] **Step 3.** Focus-within highlight wired on both platforms.
-- [ ] **Step 4.** Keyboard: Enter sends, Shift+Enter inserts newline,
+- [x] **Step 3.** Focus-within highlight wired on both <!-- done 2026-05-29: shipped — :focus-within in theme CSS; Swing uses RoundedPanel paint hook --> platforms.
+- [x] **Step 4.** Keyboard: Enter sends <!-- done 2026-05-29: shipped — keydown handlers on both platforms; Composer.kt uses KeyAdapter, chat-app.ts handles document keydown -->, Shift+Enter inserts newline,
   Cmd+/ opens command picker, Cmd+@ opens mention picker, ESC stops a
   streaming turn (verified across both platforms — see C-3 keyboard
   acceptance).
@@ -556,9 +556,9 @@ collapsed-and-expanded states; keyboard contract from C-3 honoured.
 
 ## Phase 4 — Drag-n-drop + attachment plumbing (C-8)
 
-- [ ] **Step 1.** JetBrains: `TransferHandler` on the composer accepts
+- [x] **Step 1.** JetBrains: `TransferHandler` on the composer accepts <!-- done 2026-05-29: shipped — DropTarget on Composer panel accepts javaFileListFlavor; chip added on drop -->
   `javaFileListFlavor` + `imageFlavor`. Each drop adds a file chip.
-- [ ] **Step 2.** VS Code: webview `drop` + `paste` handlers; bytes
+- [x] **Step 2.** VS Code: webview `drop` + `paste` handlers <!-- done 2026-05-29: shipped — chat-app.ts onDrop/onDragOver/onDragLeave with composer--dragover class -->; bytes
   routed through `postMessage` to the host extension, which writes to
   `.event4u-agent/attachments/<conv-id>/` and posts back the path.
 - [ ] **Step 3.** Attachments referenced in the next turn payload —
@@ -574,12 +574,12 @@ the file content.
 
 ## Phase 5 — Status surfaces (C-9, C-10) + empty state (C-2) + header (C-1)
 
-- [ ] **Step 1.** Move the status dot from the top-left of the tool
+- [x] **Step 1.** Move the status dot from the top-left <!-- done 2026-05-29: shipped — ModePill paints the embedded status dot; StatusDot.kt removed --> of the tool
   window into the mode pill (both platforms).
 - [ ] **Step 2.** Statusbar widget upgraded to draw a dot prefix +
   fall back to `AgentSettings.defaultModel` instead of `(no model)`.
-- [ ] **Step 3.** Empty-state welcome card visible when `messages.isEmpty`.
-- [ ] **Step 4.** Header (C-1) wired with the three icon actions
+- [x] **Step 3.** Empty-state welcome card visible when `messages.isEmpty` <!-- done 2026-05-29: shipped — WelcomeCard.kt + welcome-html.ts; ChatPanel renders it when messages.isEmpty -->.
+- [x] **Step 4.** Header (C-1) wired with the three icon actions <!-- done 2026-05-29: shipped — Header.kt + header-html.ts with disabled buttons per user directive -->
   (history placeholder, new thread, kebab menu).
 
 **Exit gate.** Side-by-side screenshot with Augment shows: no

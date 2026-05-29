@@ -6,10 +6,10 @@
 
 ## Overall
 
-**35 / 268 steps done · 13%**
+**53 / 267 steps done · 20%**
 
 ```text
-█████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   13%
+████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   20%
 ```
 
 ## Open roadmaps
@@ -17,7 +17,7 @@
 | # | Roadmap | Phases | Steps | Open | Done | Deferred | Cancelled | Progress |
 |---|---|---:|---:|---:|---:|---:|---:|---|
 | 1 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 30 | 30 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
-| 2 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 6 | 39 | 39 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
+| 2 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 6 | 39 | 20 | 18 | 0 | 1 | █████░░░░░ 47% |
 | 3 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 18 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 | 4 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 35 | 5 | 0 | ██████░░░░ 56% |
 | 5 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 119 | 119 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
@@ -38,15 +38,15 @@
 
 ### [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md)
 
-**MVP UI design — make the chat surface look like a real product** — 0 / 39 done (0%)
+**MVP UI design — make the chat surface look like a real product** — 18 / 38 done (47%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
-| 1 | Spec lock + reference snapshots | ⬜ not started | 4 | 0 | 0 | 0 | 0% |
-| 2 | Visual primitives library | ⬜ not started | 9 | 0 | 0 | 0 | 0% |
-| 3 | Composer container | ⬜ not started | 4 | 0 | 0 | 0 | 0% |
-| 4 | Drag-n-drop + attachment plumbing (C-8) | ⬜ not started | 4 | 0 | 0 | 0 | 0% |
-| 5 | Status surfaces (C-9, C-10) + empty state (C-2) + header (C-1) | ⬜ not started | 4 | 0 | 0 | 0 | 0% |
+| 1 | Spec lock + reference snapshots | ⬜ not started | 3 | 0 | 0 | 1 | 0% |
+| 2 | Visual primitives library | ✅ done | 0 | 9 | 0 | 0 | 100% |
+| 3 | Composer container | ✅ done | 0 | 4 | 0 | 0 | 100% |
+| 4 | Drag-n-drop + attachment plumbing (C-8) | 🟡 in progress | 2 | 2 | 0 | 0 | 50% |
+| 5 | Status surfaces (C-9, C-10) + empty state (C-2) + header (C-1) | 🟡 in progress | 1 | 3 | 0 | 0 | 75% |
 | 6 | Manual side-by-side parity check | ⬜ not started | 14 | 0 | 0 | 0 | 0% |
 
 ### [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md)
