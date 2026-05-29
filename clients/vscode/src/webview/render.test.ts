@@ -15,8 +15,8 @@ describe('renderMessages', () => {
         costFooter: null,
       },
     ]);
-    expect(html).toContain('event4u-card--user');
-    expect(html).toContain('event4u-card--assistant');
+    expect(html).toContain('e4u-card--user');
+    expect(html).toContain('e4u-card--assistant');
     expect(html).toContain('Hello');
     expect(html).toContain('Hi there');
   });
@@ -32,7 +32,7 @@ describe('renderMessages', () => {
         costFooter: null,
       },
     ]);
-    expect(html).toContain('event4u-streaming-tag');
+    expect(html).toContain('e4u-streaming-tag');
   });
 
   it('renders a cost footer when present', () => {
@@ -55,7 +55,7 @@ describe('renderMessages', () => {
         },
       },
     ]);
-    expect(html).toContain('event4u-cost');
+    expect(html).toContain('e4u-cost');
     expect(html).toContain('$0.0156');
     expect(html).toContain('TTFT 412ms');
   });
@@ -73,7 +73,7 @@ describe('renderMessages', () => {
         allowFreeText: true,
       },
     ]);
-    expect(html).toContain('event4u-card--halt');
+    expect(html).toContain('e4u-card--halt');
     expect(html).toContain('data-action="halt-answer"');
     expect(html).toContain('Option A');
     expect(html).toContain('data-action="halt-text"');
@@ -105,8 +105,8 @@ describe('renderMessages', () => {
     ]);
     expect(html).toContain('✅');
     expect(html).toContain('❌');
-    expect(html).toContain('event4u-tool-call--ok');
-    expect(html).toContain('event4u-tool-call--error');
+    expect(html).toContain('e4u-tool-call--ok');
+    expect(html).toContain('e4u-tool-call--error');
   });
 });
 
@@ -127,15 +127,15 @@ describe('renderSnapshot', () => {
   });
 
   it('classifies status', () => {
-    expect(renderSnapshot(snapshot()).statusClass).toBe('event4u-status--ready');
+    expect(renderSnapshot(snapshot()).statusClass).toBe('e4u-status--ready');
     expect(renderSnapshot(snapshot({ sidecarHealthy: false })).statusClass).toBe(
-      'event4u-status--error',
+      'e4u-status--error',
     );
     expect(
       renderSnapshot(
         snapshot({ streamingSummary: { inputTokens: 1, outputTokens: 1, usdSoFar: 0.001 } }),
       ).statusClass,
-    ).toBe('event4u-status--streaming');
+    ).toBe('e4u-status--streaming');
   });
 
   it('emits a streaming line when streaming', () => {
