@@ -5,7 +5,22 @@ dist/
 out/
 .event4u-agent/
 agents/runtime/
+
+# Build artefacts
 *.log
+*.tsbuildinfo
+coverage/
+*.vsix
+*.zip
+*.tar.gz
+
+# Kotlin / Gradle (clients/jetbrains)
+.gradle/
+build/
+!gradle/
+*.iml
+
+# Env
 .env
 .env.*
 !.env.example
