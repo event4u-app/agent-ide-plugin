@@ -33,6 +33,7 @@ import javax.swing.event.DocumentListener
  * Drag-n-drop (C-8) attaches dropped files as chips via [onAttachFiles].
  * The webview equivalent lives on the VS Code side.
  */
+@Suppress("TooManyFunctions") // Composer owns three rows + lifecycle + drag-n-drop; splitting hurts cohesion.
 class Composer(
     private val callbacks: Callbacks,
 ) : RoundedPanel(null, Theme.Radius.CARD) {

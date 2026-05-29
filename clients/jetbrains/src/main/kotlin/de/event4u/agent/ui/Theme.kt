@@ -65,9 +65,20 @@ object Theme {
         // Status palette — soft fixed values that work against both the
         // light and dark default IntelliJ themes. JBColor handles the
         // light/dark switch automatically.
-        val STATUS_READY: JBColor = JBColor(Color(74, 144, 226), Color(74, 144, 226))
-        val STATUS_STREAMING: JBColor = JBColor(Color(76, 175, 80), Color(76, 175, 80))
-        val STATUS_ERROR: JBColor = JBColor(Color(200, 70, 70), Color(200, 70, 70))
+        val STATUS_READY: JBColor = JBColor(Color(READY_R, READY_G, READY_B), Color(READY_R, READY_G, READY_B))
+        val STATUS_STREAMING: JBColor =
+            JBColor(Color(STREAMING_R, STREAMING_G, STREAMING_B), Color(STREAMING_R, STREAMING_G, STREAMING_B))
+        val STATUS_ERROR: JBColor = JBColor(Color(ERROR_R, ERROR_G, ERROR_B), Color(ERROR_R, ERROR_G, ERROR_B))
+
+        private const val READY_R = 74
+        private const val READY_G = 144
+        private const val READY_B = 226
+        private const val STREAMING_R = 76
+        private const val STREAMING_G = 175
+        private const val STREAMING_B = 80
+        private const val ERROR_R = 200
+        private const val ERROR_G = 70
+        private const val ERROR_B = 70
     }
 
     object Fonts {
