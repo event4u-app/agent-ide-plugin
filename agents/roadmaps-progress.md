@@ -6,10 +6,10 @@
 
 ## Overall
 
-**53 / 318 steps done · 17%**
+**53 / 346 steps done · 15%**
 
 ```text
-███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   17%
+██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   15%
 ```
 
 ## Open roadmaps
@@ -18,7 +18,7 @@
 |---|---|---:|---:|---:|---:|---:|---:|---|
 | 1 | [road-to-code-review.md](roadmaps/road-to-code-review.md) | 5 | 48 | 48 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 | 2 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 30 | 30 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
-| 3 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 6 | 39 | 20 | 18 | 0 | 1 | █████░░░░░ 47% |
+| 3 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 7 | 67 | 48 | 18 | 0 | 1 | ███░░░░░░░ 27% |
 | 4 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 18 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 | 5 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 35 | 5 | 0 | ██████░░░░ 56% |
 | 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 122 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
@@ -51,7 +51,7 @@
 
 ### [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md)
 
-**MVP UI design — make the chat surface look like a real product** — 18 / 38 done (47%)
+**MVP UI design — make the chat surface look like a real product** — 18 / 66 done (27%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
@@ -60,7 +60,8 @@
 | 3 | Composer container | ✅ done | 0 | 4 | 0 | 0 | 100% |
 | 4 | Drag-n-drop + attachment plumbing (C-8) | 🟡 in progress | 2 | 2 | 0 | 0 | 50% |
 | 5 | Status surfaces (C-9, C-10) + empty state (C-2) + header (C-1) | 🟡 in progress | 1 | 3 | 0 | 0 | 75% |
-| 6 | Manual side-by-side parity check | ⬜ not started | 14 | 0 | 0 | 0 | 0% |
+| 7 | Message-card redesign + overflow fix (C-11..C-14) | ⬜ not started | 24 | 0 | 0 | 0 | 0% |
+| 6 | Manual side-by-side parity check | ⬜ not started | 18 | 0 | 0 | 0 | 0% |
 
 ### [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md)
 
@@ -79,7 +80,7 @@
 **MVP — Internal demo + dogfooding** — 35 / 62 done (56%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
-|---|---|---|---|---:|---:|---:|---:|
+|---|---|---|---:|---:|---:|---:|---:|
 | 1 | Skeleton & RPC baseline (3 weeks) | 🟡 in progress | 4 | 5 | 2 | 0 | 56% |
 | 2 | Chat with one provider (3 weeks) | 🟡 in progress | 5 | 8 | 0 | 0 | 62% |
 | 3 | Minimal 2-step tool-call loop + single-file edit (3 weeks) | 🟡 in progress | 4 | 6 | 0 | 0 | 60% |
@@ -103,3 +104,4 @@
 | 13 | UX polish + late-arriving items (3 weeks) | ⬜ not started | 11 | 0 | 0 | 0 | 0% |
 | 14 | Pricing Book signing + Telemetry + Docs (3 weeks) | ⬜ not started | 12 | 0 | 0 | 0 | 0% |
 | 15 | Buffer + Beta Release (2-3 weeks) | ⬜ not started | 14 | 0 | 0 | 0 | 0% |
+

@@ -512,6 +512,153 @@ codicons. Use `$(circle-filled)` with theme colour.
 - `:focus-visible` for keyboard focus rings; never `:focus` (mouse
   doesn't get a ring).
 
+### C-11 — User-message bubble
+
+> **Why added (2026-05-29).** User smoke run of PR #7: assistant text
+> overflows the tool window edges (clipped left + right). User + agent
+> messages render as bare centred labels ("You" / "Agent") — no boxes,
+> no alignment, no timestamp. Augment shipping reference shows clear
+> boxed-bubble + plain-text + timestamp pattern. Screenshots
+> `agents/tmp/{augment,plugin}-screenshot-2.png` (local-only).
+
+**Role.** Visually anchor a user turn so it reads as a separate
+spoken-by-you block, distinct from the assistant's free-flow text.
+
+**Anatomy.** A `radius.card` rounded box, accent-tinted background
+(softer than the model pill — closer to `--vscode-editor-
+inactiveSelectionBackground` / `JBUI.CurrentTheme.Banner.INFO_BG_COLOR`),
+1 px border in the same tint at 50 % alpha. Text inside uses body
+font, default colour, `space.sm` × `space.md` padding. Above the box,
+on a row of its own, right-aligned: a relative + absolute timestamp
+in muted text (`5m ago · May 29 15:44`). Below the box, no decoration.
+
+**Alignment.** Right-anchored within the messages container. Max-width
+~85 % of the container so a very long paragraph still wraps and the
+left margin shows the assistant column. Single short lines stay
+right-aligned at their natural width; long paragraphs grow leftward
+until they hit the max-width cap.
+
+**States.**
+- **Default** — boxed, accent tint, right-aligned, timestamp visible.
+- **Hover** — copy button appears in the top-right corner of the box
+  (icon button, T-7-style; click copies text to clipboard).
+- **Streaming** — N/A; users don't stream. Only assistant streams.
+- **Multi-line** — keeps the box; padding stays constant; text wraps
+  inside the box.
+
+**JetBrains.** `RoundedPanel(radius = Theme.Radius.CARD)` with a
+right-aligned `FlowLayout` parent in the messages container. Build
+the timestamp via a small `formatRelative(Instant)` helper (today
+"now", under 1 hour "Xm ago", under 24 h "Xh ago", else
+"MMM dd HH:mm"). Hover-copy button via `IconButton.create(
+AllIcons.Actions.Copy, …)` overlaid via `OverlayLayout`.
+
+**VS Code.** `<section class="e4u-user-bubble">` inside a wrapper
+`<div class="e4u-row e4u-row--right">`. CSS `justify-content: flex-
+end` on the row, `max-width: 85%` on the bubble, `:hover .e4u-copy-
+btn { opacity: 1 }` for the copy affordance.
+
+**Acceptance.**
+- User messages render in a visible accent-tinted card with rounded
+  corners.
+- Card is right-aligned inside the messages container.
+- Card never overflows the container's horizontal bounds — verified
+  by a unit test that asserts `max-width` constraint + a manual
+  resize check at very narrow widths (200 px wide column).
+- Above the card, a timestamp row shows "Xm ago · ABS" right-aligned.
+- Hover surfaces a copy button; click copies the raw text.
+
+### C-12 — Assistant message (plain prose + thinking preview)
+
+**Role.** Distinct from C-11: agent output flows as plain prose
+left-aligned with no box. Long answers get a collapsible "thinking
+preview" header strip above the prose, mirroring Augment's "I'm
+looking at the task for ha… ▸".
+
+**Anatomy.** No box, no background tint, no border. Body font, body
+colour. `space.md` left margin (no right indent — the prose flows to
+the right edge). Above the prose, optional **thinking preview row**:
+chevron + first ~40 chars of the model's reasoning text + click-to-
+expand affordance. Expand reveals a `details` block with the full
+thinking text (rendered with `monospace` font to set it apart).
+
+**Alignment.** Left-anchored, full width minus left margin. No
+right-edge max-width — long lines wrap naturally.
+
+**States.**
+- **Default** — plain prose, no chrome.
+- **Streaming** — small "•" pulse appended to the last paragraph;
+  thinking preview row shows live partial text.
+- **With thinking** — preview row visible above prose; clicking
+  expands.
+- **Hover** — copy button appears in the top-right (same icon as
+  C-11's hover-copy).
+
+**JetBrains.** Same `newChatEditorPane(html)` for the prose; thinking
+preview is a small `JBPanel` with a `chevron` `JBLabel` + truncated
+text label, click toggles a hidden expanded `JEditorPane` below.
+
+**VS Code.** `<article class="e4u-assistant-msg">` with optional
+`<details class="e4u-thinking">` above the prose `<div>`.
+
+**Acceptance.**
+- Assistant prose has zero box chrome — no border, no background.
+- Left-aligned inside the messages container.
+- When a thinking-delta arrives, the preview row appears above the
+  prose; clicking expands.
+- Streaming pulse is visible while a turn is in flight; disappears
+  on stop event.
+
+### C-13 — Tool-call pill (per-call card)
+
+**Role.** Each tool call gets its own visible pill UNDER the
+assistant prose, NOT inline. Augment shows `🟢 Read file ▾
+wizard-install-py-wiring.md  agents/roadmaps` per call.
+
+**Anatomy.** A horizontal pill at `radius.chip`, full row width
+minus left margin, 1 px border, `space.sm` padding. Inside, in
+order: 14 px tool icon + bold tool name + `▾` collapse chevron + path
+or arg-preview in muted text + status dot on the right (green = ok,
+red = error, amber = pending). Click toggles a `<details>` block
+below with the full tool output.
+
+**States.** Collapsed (default), expanded (output visible),
+streaming (pending status, no output yet).
+
+**JetBrains.** A `Chip` variant or a small custom `RoundedPanel`;
+the existing `Chip` class is reused with a new `TOOL_CALL` variant
+extension. Output via `JEditorPane` in a hidden child until expanded.
+
+**VS Code.** `<details class="e4u-tool-pill">` with the summary row
++ a `<pre>` for output bytes.
+
+**Acceptance.**
+- Every tool call from an assistant turn becomes its own pill.
+- Pill shows tool name, arg preview, status dot.
+- Click toggles output panel; output panel is collapsed by default.
+- Status dot colour matches the call's outcome.
+
+### C-14 — Tool-summary footer
+
+**Role.** Aggregate per-turn metrics: "1 File Examined · 1 Tool
+Used" + an optional "Stopped" indicator when the user pressed stop.
+
+**Anatomy.** A muted small-font row directly under all tool pills.
+Comma-separated counters: files examined, tools used, lines edited,
+$cost. The "Stopped" marker (checkbox glyph + label) sits on its own
+row above this when the turn was stopped early.
+
+**JetBrains.** `JBLabel` with `Theme.Fonts.small()` +
+`Theme.Colors.mutedText()`.
+
+**VS Code.** `<footer class="e4u-turn-footer">` below the pills.
+
+**Acceptance.**
+- Counts reflect actual tool-call data (file-examined count = unique
+  read-side tool calls; tools-used = total tool-call count).
+- "Stopped" only appears for turns that ended via cancel.
+- Row is muted; never competes with the agent prose.
+
 ## Phase 1 — Spec lock + reference snapshots
 
 Before writing any code, lock the spec so the implementation pass can't
@@ -624,6 +771,121 @@ the file content.
 free-floating dots, no `(no model)`, an empty state in the middle, and
 a real header at the top.
 
+## Phase 7 — Message-card redesign + overflow fix (C-11..C-14)
+
+> **Why added (2026-05-29).** Second user smoke run found two
+> regressions vs the design contract: (a) assistant prose **overflows**
+> the tool window edges — clipped left+right — that's a layout bug,
+> not a styling miss; (b) message-card design is missing the
+> user-bubble + timestamp + tool-pill structure Augment uses.
+
+### Phase 7.0 — Overflow fix (layout bug, not styling)
+
+- [ ] **Step 1.** Reproduce — capture `agents/tmp/plugin-overflow-
+  before.png` with two stub turns visible and the tool window narrow
+  enough to expose the clipped prose.
+- [ ] **Step 2.** JetBrains: the messages container's child
+  `JEditorPane` is wider than its parent because `JBPanel.preferredSize`
+  ignores the inset width of the scroll viewport. Wrap each message
+  card in a `JPanel` whose `maximumSize.width = parent.viewport.width
+  - margin` and explicitly set `setSize` on resize via a
+  `ComponentAdapter`.
+- [ ] **Step 3.** VS Code: webview should already be flex-column with
+  `flex-shrink: 1` on the message container. Audit `.e4u-card__body`
+  and ensure `overflow-wrap: anywhere` plus `min-width: 0` on the flex
+  child. Add the rule if missing; verify by resizing the panel to
+  200 px.
+- [ ] **Step 4.** Manual smoke — re-capture
+  `agents/tmp/plugin-overflow-after.png` and append to evidence.
+- [ ] **Step 5.** Unit test: VS Code `render.test.ts` — assert that
+  no rendered card contains a CSS `width: <fixed>` and that every
+  card's parent allows shrink.
+
+**Exit gate.** No clipped text at any tool-window width ≥ 200 px on
+either platform.
+
+### Phase 7.1 — User-message bubble (C-11)
+
+- [ ] **Step 1.** JetBrains: extract a `UserMessageCard.kt` under
+  `chat/` that builds the rounded-box + timestamp + right-aligned
+  row. Wire `ChatMessageRenderer.renderUser` to use it.
+- [ ] **Step 2.** Add a `Timestamps.kt` helper: `formatRelative(
+  Instant, now: Instant = Instant.now()): String` returning "now",
+  "Xm ago", "Xh ago", or "MMM dd HH:mm". Unit test with frozen
+  clock.
+- [ ] **Step 3.** VS Code: add `.e4u-user-bubble` + `.e4u-row--right`
+  rules to theme.css; render via `render.ts::renderUser`. Same
+  timestamp helper in TS — `formatRelative(date: Date, now = new
+  Date()): string`. Vitest snapshot.
+- [ ] **Step 4.** Hover-copy button (lives in C-11 spec). JetBrains:
+  `IconButton.create(AllIcons.Actions.Copy, …)` overlaid; VS Code:
+  CSS `:hover .e4u-copy-btn { opacity: 1 }`.
+- [ ] **Step 5.** Extend the `UserMessage` data class with a
+  `timestamp: Instant` / `timestamp: Date`; default to "now" at
+  construction.
+
+**Exit gate.** User messages render boxed + right-aligned + with a
+timestamp row above; long messages wrap inside the box; hover shows
+copy.
+
+### Phase 7.2 — Assistant prose + thinking preview (C-12)
+
+- [ ] **Step 1.** JetBrains: refactor `ChatMessageRenderer.
+  renderAssistant` — drop the box card; render the prose directly
+  via `newChatEditorPane` with `space.md` left margin only.
+- [ ] **Step 2.** Add a `ThinkingPreview.kt` component (a `JBLabel`
+  with chevron + truncated text + toggle-to-expand below). Wire it
+  to the assistant message's optional `thinkingText` field.
+- [ ] **Step 3.** Add `thinking?: string` to the `AssistantMessage`
+  data class on both platforms.
+- [ ] **Step 4.** VS Code: `.e4u-assistant-msg` rule (no box), plus
+  `.e4u-thinking` <details> element with monospace summary.
+- [ ] **Step 5.** Streaming pulse — when the message is `streaming`,
+  append a `•` glyph that pulses (CSS `@keyframes pulse` on web;
+  Swing timer toggling label visibility on a 500 ms interval).
+- [ ] **Step 6.** Update existing snapshot tests to drop the
+  `e4u-card--assistant` background expectation.
+
+**Exit gate.** Assistant prose is plain text left-aligned; thinking
+preview surfaces when streamed; streaming pulse visible during turn.
+
+### Phase 7.3 — Tool-call pills + tool summary (C-13, C-14)
+
+- [ ] **Step 1.** Extend `Chip.kt` with a `TOOL_CALL` variant carrying
+  status dot + chevron + arg preview + toggle-on-click. Output panel
+  is a hidden child until expanded.
+- [ ] **Step 2.** `ChatMessageRenderer.renderToolCall` becomes a
+  standalone pill rendered **below** the prose (not inside the
+  assistant card — there's no card anymore).
+- [ ] **Step 3.** Add a `ToolSummaryFooter.kt` (JetBrains) +
+  `renderToolSummary` (VS Code) that aggregates the call list into
+  `N files examined · M tools used` and renders below all pills.
+- [ ] **Step 4.** Stopped marker — when the assistant turn ended via
+  cancel, render a `□ Stopped` row above the summary.
+- [ ] **Step 5.** Acceptance — fixture with two tool calls (one ok,
+  one error) renders two pills + a summary footer + no `Stopped`
+  marker; same fixture with a `stoppedEarly: true` flag renders the
+  marker.
+
+**Exit gate.** Tool calls are visible as separate pills; counts are
+aggregated; stopped marker appears only on cancelled turns.
+
+### Phase 7.4 — Messages-container layout
+
+- [ ] **Step 1.** JetBrains: messages container becomes a vertical
+  `Box` of `MessageRow` elements; each `MessageRow` is left- or
+  right-aligned depending on message kind. Replace the current
+  centred labels with this layout.
+- [ ] **Step 2.** VS Code: `.e4u-messages` flex-column with each
+  child a row (`.e4u-row--left` / `.e4u-row--right`) per message
+  kind.
+- [ ] **Step 3.** Vertical gap between turns: `space.lg` (16 px) so
+  the conversation flows naturally; same-author back-to-back messages
+  collapse to `space.sm`.
+
+**Exit gate.** Conversation reads naturally — user bubbles cluster
+right, assistant prose left, with consistent vertical rhythm.
+
 ## Phase 6 — Manual side-by-side parity check
 
 The work above is testable in CI for compilation, lint, and component
@@ -657,6 +919,15 @@ platform. Each gap has a disposition.
   send; send delivers the file content as a synthetic tool call to the
   agent.
 - [ ] Empty chat shows the welcome card; first message hides it.
+- [ ] **User messages render boxed + right-aligned with a timestamp
+  row above (C-11).**
+- [ ] **Assistant prose renders left-aligned with no box; optional
+  thinking preview row above (C-12).**
+- [ ] **Each tool call renders as its own pill below the prose; an
+  aggregated tool-summary footer counts files examined + tools used
+  (C-13, C-14).**
+- [ ] **No clipped or overflowing text at any tool-window width ≥
+  200 px on either platform (Phase 7.0).**
 - [ ] Side-by-side with Augment, no reviewer says "your plugin looks
   cheap" with a straight face.
 
