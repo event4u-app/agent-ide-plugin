@@ -6,7 +6,7 @@
 
 ## Overall
 
-**24 / 206 steps done · 12%** (+4 from road-to-mvp Sprint 1; 3 steps in progress `[~]`)
+**25 / 206 steps done · 12%** (+5 from road-to-mvp Sprint 1; 2 steps in progress `[~]`)
 
 ```text
 █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   12%
@@ -16,7 +16,7 @@
 
 | # | Roadmap | Phases | Steps | Open | Done | Deferred | Cancelled | Progress |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| 1 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 63 | 4 | 0 | 0 | █░░░░░░░░░ 6% |
+| 1 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 62 | 5 | 0 | 0 | █░░░░░░░░░ 7% |
 | 2 | [road-to-phase-0-validation.md](roadmaps/road-to-phase-0-validation.md) | 18 | 44 | 0 | 20 | 24 | 0 | ██████████ 100% |
 | 3 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 119 | 119 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 
@@ -26,11 +26,11 @@
 
 ### [road-to-mvp.md](roadmaps/road-to-mvp.md)
 
-**MVP — Internal demo + dogfooding** — 4 / 67 done (6%)
+**MVP — Internal demo + dogfooding** — 5 / 67 done (7%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
-| 1 | Skeleton & RPC baseline (3 weeks) | 🔄 in progress | 7 | 4 | 0 | 0 | 36% |
+| 1 | Skeleton & RPC baseline (3 weeks) | 🔄 in progress | 6 | 5 | 0 | 0 | 45% |
 | 2 | Chat with one provider (3 weeks) | ⬜ not started | 13 | 0 | 0 | 0 | 0% |
 | 3 | Minimal 2-step tool-call loop + single-file edit (3 weeks) | ⬜ not started | 10 | 0 | 0 | 0 | 0% |
 | 4 | agent-config v0 + Claude CLI mode + Tracking (4 weeks) | ⬜ not started | 21 | 0 | 0 | 0 | 0% |
