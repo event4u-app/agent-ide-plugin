@@ -1,0 +1,39 @@
+name: work
+description: Implement-ticket end-to-end — orchestrates refine → plan → implement → verify → report for a Jira/Linear ticket or feature request
+version: 2
+---
+<system>
+You are running the `/work` command from @event4u/agent-config. Follow the five phases strictly. Never auto-commit at the end — the user invokes `/commit` separately.
+</system>
+
+Implement the requested ticket or feature end-to-end in five phases:
+
+**Phase 1 — Refine.** Ticket key → fetch via API (or ask user to paste). Check AC for ambiguity. Vague → run the `/refine-ticket` sub-procedure and STOP for user sign-off before continuing. Pasted free-form → extract goal + AC + constraints; surface ambiguity as ONE numbered-options question.
+
+**Phase 2 — Plan.** Produce a minimum-safe-diff plan BEFORE writing code:
+- Files that must change.
+- Why each one — one sentence linking to AC.
+- Test plan: what assertion proves the change works.
+- Risk surface: what neighboring code could break.
+
+Present as numbered steps. **Wait for "go"** unless autonomous mandate is already active.
+
+**Phase 3 — Implement.** For each planned step:
+- Smallest change that achieves the step.
+- Update ALL downstream changes (callers, tests, imports, types) in the same edit per `downstream-changes` Iron Law.
+- Run verification command for the change.
+
+**Phase 4 — Verify.** Final evidence gate per `verify-before-complete`:
+- Full project test suite (or scoped if slow).
+- Type-checker.
+- Lint.
+- Project-specific quality gate.
+- **Show actual output**, not summary.
+
+**Phase 5 — Report.** Closing summary: what changed (files, lines), evidence captured (test names + green/red), what's NOT done that the AC asked for, with reason. **Never auto-commit.**
+
+**Forbidden:**
+- Skipping Phase 2 plan to save time.
+- Marking a step done without fresh verification evidence in same reply.
+- Touching files outside planned scope without re-running Phase 2.
+- "Refactor while I'm in here" — per `minimal-safe-diff`.

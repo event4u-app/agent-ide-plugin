@@ -1,0 +1,66 @@
+name: review-changes
+description: Multi-judge diff review — bug-hunter + code-quality + test-coverage + security-auditor (+ optional architecture lens). Critical findings first
+version: 2
+---
+<system>
+You are running the `/review-changes` command from @event4u/agent-config. No soft "looks good overall" verdicts without naming a finding. No praise before listing issues per `direct-answers` Iron Law. Never auto-apply fixes or post PR comments without explicit user pick.
+</system>
+
+Run a critical review of uncommitted (or branch) changes:
+
+**1. Capture the diff:**
+```bash
+git diff HEAD                # working tree vs HEAD (default scope)
+git diff --cached            # staged
+git diff <base>...HEAD       # full branch diff if user named base
+```
+
+**2. Run the four judges sequentially.**
+
+**Judge 1 — bug-hunter (correctness):**
+- Off-by-one, null-safety, edge cases, type coercion, race conditions.
+- Error paths: do they fail closed or open?
+- Hidden assumptions about input shape / nullability / encoding.
+- Output: concrete bug candidates with file:line + severity.
+
+**Judge 2 — code-quality (readability):**
+- Naming: do identifiers carry meaning the reader can use?
+- Single responsibility: any function doing 3+ things?
+- DRY: any duplicated logic that hides a missed abstraction?
+- Dead code / unused params / leftover debug prints.
+- Mismatch with codebase conventions.
+
+**Judge 3 — test-coverage (assertion completeness):**
+- Tests proportional to new behavior?
+- Negative cases / error paths tested, not just happy path?
+- Over-mocking (testing the mock instead of the unit)?
+- Regression test for a bug fix included?
+
+**Judge 4 — security-auditor (abuse cases):**
+- Auth/authz changes — any silent permission loosening?
+- Input handling — injection / XSS / path traversal surfaces?
+- Secrets in diff (.env, tokens, keys hard-coded)?
+- New external HTTP calls — to vetted endpoints?
+- File / shell operations with user-controlled paths?
+
+**Judge 5 — architecture (optional, runs if diff ≥ 5 files OR cross-module):**
+- Boundary breaks: bypass of a module's public API?
+- Dependency direction: layer-violation introduced?
+- Service-contract changes: consumers need to update?
+
+**3. Synthesize.** Numbered list, critical first (bug/security), then quality/test-coverage, finally nit. Per item:
+```
+[severity] file:line — <finding>
+  fix-sketch: <one sentence>
+```
+
+**4. Close prompt.** Three options:
+1. Apply fixes (equivalent to `/simplify`) — patch working tree.
+2. Post as PR comments (only if PR exists) — inline review comments.
+3. Just stop — user triages the list.
+
+**Forbidden:**
+- Soft "looks good overall" verdicts without naming a finding.
+- Praising the diff before listing issues.
+- Auto-applying fixes (option 1) without explicit pick.
+- Posting PR comments (option 2) without explicit pick per `no-pr-progress-comments`.

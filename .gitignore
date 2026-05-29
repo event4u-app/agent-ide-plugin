@@ -1,0 +1,15 @@
+.idea/
+.DS_Store
+node_modules/
+dist/
+out/
+.event4u-agent/
+agents/runtime/
+*.log
+.env
+.env.*
+!.env.example
+
+/* Files to ignore */
+/agents/analysis/sweepai/
+/agents/analysis/intellij-augment/

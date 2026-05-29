@@ -1,0 +1,167 @@
+---
+complexity: heavy
+---
+
+# Roadmap: MVP — Internal demo + dogfooding
+
+> **Time-box:** 13 weeks sprint-work + 1-3 weeks buffer = 14-16 calendar weeks. Sprint 1 starts only after Phase 0 (`road-to-phase-0-validation.md`) closes.
+>
+> **Demo target (end of Sprint 4):** Open PhpStorm + VS Code, open event4u repo, type `/commit` in the plugin chat. Plugin reads `commands/commit.md` from the agent-config tree, the agent **runs a minimal 2-step tool-call loop** (read `git status` → propose commit message), user accepts. Cost footer shows tokens + USD. Stop button works. Hard caps fire on a prepared "expensive prompt" scenario.
+>
+> **Source:** distilled from `agents/analysis/PLAN.md` §7.1 + §17 Phase 1 + 2026-05-28 AI Council review. Council top-10 findings #1 (single-shot is incoherent), #2 (CLI is hidden epic), #5 (scope underestimated), #6 (Hard Caps need estimate) are reflected in the changes below.
+
+## Context
+
+- **Gates.** `minimal-safe-diff` (no drive-by edits, no rename storms), `scope-control` (no library swaps mid-sprint, no Sprint-5 work bleeding into Sprint 4), `verify-before-complete` (no T-XXX is marked done without fresh verification evidence in the same reply that ships the work).
+- **Council-driven changes from original PLAN.md §7.1 / §17 Phase 1:**
+  - **Sprint 3** allows a minimal 2-step tool-call loop (council finding #1) — `/commit` without a loop is incoherent (`git status` IS a tool call, you can't skip it). The plan called this "single-shot" but it never was.
+  - **Sprint 4 CLI scope is tight:** Claude Code CLI only, `--output-format=stream-json` only, no interactive commands, no session resume, no session browser. PTY-required features all moved to v1.0 Sprint 9. Council finding #2.
+  - **Sprint 4 adds T-411b (input-token-cost estimate):** input-token estimate is cheap (exact via `messages.countTokens()`). Output projection (the hard part) stays deferred. Hard caps now show `Estimated input: $0.012 · Output cap: 2k tokens · Daily remaining: $4.27` rather than "$5 remaining, is this safe?". Council finding #6 round-2.
+  - **MVP roadmap does NOT include Codex / Gemini / OpenAI** — they are v1.0 Sprint 5. Original plan was consistent; restated here so it stays cut.
+- **Cut explicitly (deferred to v1.0 — see `road-to-v1-0.md`):** Multi-step agent loop with phases (plan → exec → verify), multi-file edit, SweepAI inline-edit (`Cmd+I`), intention actions, right-click menus, Context Engine v0/v1, full action-card badge polish, live PTY terminal, per-CLI gear panel, session browser, conversation forking, checkpoints, Smart Paste, KaTeX/Mermaid, Pre-flight output-length projection.
+- **What this MVP proves.** End-to-end pipeline works: agent-config tree → slash-command → tool-call loop → cost-tracking → stop. Every later sprint extends one of these surfaces; if any of them is broken in MVP, the rest of v1.0 builds on quicksand.
+
+---
+
+## Phase 1 — Skeleton & RPC baseline (3 weeks)
+
+> **Goal.** Mono-repo + sidecar + two empty IDE plugins talking to it. No chat, no LLM, no UI worth showing — just RPC plumbing that survives an IDE restart.
+
+- [ ] **T-101 — Mono-repo bootstrap.** Initialise `event4u-agent/` with `pnpm` workspaces, `Taskfile.yml`, `tsconfig.base.json`, ESLint + Prettier (TS), Detekt + ktlint (Kotlin). Add `packages/core/`, `packages/protocol/`, `packages/shared/`, `clients/jetbrains/`, `clients/vscode/`. Verify `task build` runs in <30s and produces no output bloat. Add `.gitignore` for `dist/`, `out/`, `.event4u-agent/`, `agents/runtime/`, IDE-temp files, OS-temp files.
+- [ ] **T-102 — Agent Core echo-server (JSON-RPC over stdio).** Implement `packages/core/src/server.ts` using `vscode-jsonrpc`. Two methods: `ping(): "pong"` and `echo(text: string): string`. Add `packages/protocol/schema.ts` with Zod schemas for `PingRequest`, `PingResponse`, `EchoRequest`, `EchoResponse`. Codegen Kotlin DTOs from Zod via a script in `scripts/codegen.ts` (start simple: one schema, one DTO; expand later).
+- [ ] **T-103 — JetBrains plugin skeleton.** `clients/jetbrains/` with `build.gradle.kts` using `intellij-platform-gradle-plugin v2`. `plugin.xml` declares ToolWindow `event4u-agent` right-anchored, depends on `com.intellij.modules.platform`. Add `AgentToolWindowFactory.kt` returning a placeholder JPanel. Verify plugin installs in PhpStorm 2024.2+ via `task jetbrains:runIde`.
+- [ ] **T-104 — VS Code extension skeleton.** `clients/vscode/` with `package.json` for VS Code Extension API, `extension.ts` activating on `onStartupFinished`. Single command `event4u.openChat` that opens an empty Webview panel using Preact (via `@vscode/webview-ui-toolkit`). Verify `task vscode:run` opens VS Code with the extension loaded.
+- [ ] **T-105 — Core↔Client RPC Hello-World.** JetBrains client spawns the sidecar (`packages/core/dist/server.js` via bundled Node — record bundled-Node path resolution as a tricky problem). VS Code extension does the same. Each client calls `ping()` on startup, displays "Sidecar healthy: pong" in its UI. Verify works after IDE restart (sidecar is re-spawned cleanly, no zombie processes).
+- [ ] **T-106 — GitHub Actions CI.** `.github/workflows/ci.yml` with matrix: ubuntu/macos/windows × node 20/22. Steps: `pnpm install`, lint, build, basic unit-test stub (one test in each package, can be `expect(true).toBe(true)` — the point is the CI plumbing). Kotlin job runs `./gradlew check`. Total CI time target: < 10 min.
+- [ ] **T-107 — Phase-0 spike findings folded in.** Re-read `agents/analysis/spike-reports/spike-0-3*.md` and apply consequences:
+  - If Spike 0.3a (JBCef) failed → Cost Dashboard goes Compose-native, JBCef-webview deferred or removed.
+  - If Spike 0.3b (JSON-RPC) failed → Kotlin-native backend for JetBrains, sidecar for VS Code only.
+  - If Spike 0.3c (CLI-Pipe) failed → CLI mode pushed to v1.0 Sprint 5, MVP runs API-only (surface to user).
+  - Document Sprint 1 decisions in `docs/adr/ADR-003-ui-stack.md` (if not yet final).
+
+### Exit gate — Phase 1 exit criteria
+
+- [ ] `task build` produces a working JetBrains `.zip` plugin + VS Code `.vsix` extension + Node `.tar.gz` sidecar.
+- [ ] In a fresh PhpStorm 2024.2 + VS Code 1.90 install: plugin installs, RPC works, IDE-restart cycle leaves no orphan sidecar processes.
+- [ ] CI green on all three OS targets.
+- [ ] Spike findings applied; ADR-003 final.
+
+---
+
+## Phase 2 — Chat with one provider (3 weeks)
+
+> **Goal.** A working chat with Claude Sonnet 4.6 over Anthropic API in both IDEs, with token counting and statusbar cost display. No tool-calling yet, no agent-config integration yet.
+
+- [ ] **T-201 — Anthropic API Backend with streaming.** Implement `packages/core/src/llm/anthropic-api.ts` using `@anthropic-ai/sdk`. Class implements `LLMBackend` interface (from `packages/protocol/schema.ts`). Streaming via `anthropic.messages.stream()`. Capture full `usage` (input + output + cache_creation + cache_read + thinking). **Only Anthropic in MVP — OpenAI is v1.0 Sprint 5.**
+- [ ] **T-202 — Chat UI JetBrains.** Compose Multiplatform (or Swing if Spike 0.3a downgraded UI choice) panel inside the ToolWindow. Components: scrollable message list (markdown rendered via `commonmark-java` or `Flexmark`), code-block syntax highlight, input box with `Shift+Enter` for newline / `Enter` to send, "Stop" button. **Action Cards simplified** — collapsed/expanded toggle with summary line; no diff-stats badge, no numeric counter, no permission-card. Just `[user / assistant / tool-call collapsed]`. Status-dot shows streaming / done / error.
+- [ ] **T-203 — Chat UI VS Code.** Preact webview with same component set. Use `@vscode/webview-ui-toolkit` for input + buttons. Code-block highlight via `shiki` (or `prism` if shiki proves too heavy in webview bundle). Webview hosts the same `packages/shared/ui/` Card components as JetBrains (cross-IDE Preact code-sharing). Verify dark / light theme switch syncs (use VS Code's CSS vars).
+- [ ] **T-204 — Settings UI v0.** JetBrains: `Configurable` implementation with three fields — provider (only Anthropic in MVP), API-key reference (deep-link to OS-Keychain settings), default model. VS Code: contributes `configuration` block to `package.json`. Both surfaces write to `.event4u-agent/settings.json` (user-scope) — **NOT to `.agent-settings.yml`** (that's read-only in MVP).
+- [ ] **T-205 — OS-Keychain integration.** JetBrains: `CredentialStore` API for storing the API key. VS Code: `secrets` API. Plugin reads the key when sidecar starts and passes it via env var to the sidecar process (never written to disk in plain text, never logged).
+- [ ] **T-206 — Pricing Book v0.** `packages/core/pricing/prices.yml` with Anthropic models only (`claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`) and Claude Pro / Max / Max-20x subscription rows. Loader in `packages/core/src/pricing/loader.ts` validates against Zod schema. **No remote fetching, no Sigstore yet — those are v1.0 Sprint 14.** Pricing book is plugin-bundled, version pinned by plugin version.
+- [ ] **T-207 — Token counter + statusbar cost display.** JetBrains: `StatusBarWidgetFactory` registering a widget showing `claude-sonnet-4-6 · $0.0156 today`. VS Code: `vscode.window.createStatusBarItem`. Updates after every step event. Click opens (placeholder) — no Cost Dashboard yet (v1.0 Sprint 7).
+- [ ] **T-208 — `.agent-settings.yml` reader v0.** `packages/core/src/config/agent-settings.ts` with Zod schema for **MVP-relevant fields only**: `llm.default_provider`, `llm.default_mode`, `roles.active_role`, `commands.suggestion.*`. All other agent-config fields are silently ignored in MVP. Hot-reload on file change (chokidar) so settings tweaks don't require IDE restart.
+
+### Exit gate — Phase 2 exit criteria
+
+- [ ] User can have a multi-turn chat with Claude Sonnet 4.6 in both IDEs.
+- [ ] Statusbar shows real cost ticking up per turn. Click does nothing (yet).
+- [ ] API key stored in OS-Keychain, not in any file.
+- [ ] Settings UI lets user pick model from a list. Hot-reload of `.agent-settings.yml` works.
+- [ ] No tool-calling, no agent-config, no stop button (that's Sprint 4).
+
+---
+
+## Phase 3 — Minimal 2-step tool-call loop + single-file edit (3 weeks)
+
+> **Goal.** Agent can call `read_file` / `list_dir` / `glob` / `grep` in a 2-step loop (call tool → see result → next reply). Single-file `write_file` with diff approval. Permission-gate is functional (read = auto-allow; write = always-ask). One editor action ("Ask about selection").
+>
+> **Council finding #1 (consensus):** Reviewer A and B both flagged "single-shot `/commit` is architecturally incoherent." The plan called this single-shot but `/commit` literally needs `read git status` before it can propose a message. Sprint 3 ships the minimum loop — read → propose. Full multi-step (plan → exec → verify) stays cut.
+
+- [ ] **T-301 — Tool-calling normalization v0.** Implement `packages/core/src/tools/normalizer.ts` translating Anthropic's `tool_use` blocks to a canonical `NormalizedToolCall`. **Only Anthropic format in MVP** — OpenAI/Codex/Gemini normalization is v1.0 Sprint 5.
+- [ ] **T-302 — Read-side tools.** `read_file(path, range?)`, `list_dir(path)`, `glob(pattern)`, `grep(pattern, path)`. All four are permission `low` (auto-allowed). Output sanitised to handle non-UTF-8 and binary files (return `"<binary file, N bytes>"` instead of garbage). `grep` shells out to `rg` if installed, falls back to a Node-native walk + regex if not.
+- [ ] **T-303 — `write_file` (single-file) with diff preview.** Permission `requires_diff_approval`. When the agent calls `write_file`, the plugin shows a diff in the IDE's native diff viewer (JetBrains: `DiffManager.showDiff`; VS Code: `vscode.diff` API) **before** writing to disk. User clicks "Apply" or "Reject". Apply writes file via `fs.writeFile`; reject discards the proposal. **Single-file only — multi-file edit is v1.0 Sprint 6.**
+- [ ] **T-304 — Permission-Gate v0.** Implements `docs/adr/ADR-004-permission-model.md` (from Phase 0 Phase 6). Hard-Floor patterns from the ADR are checked before every tool call. For `low` tools: auto-allow. For `requires_diff_approval`: show diff (T-303). For `requires_approval`: show a simple permission dialog with `[Allow once] [Always] [Deny]` — **no inline-editable scope, no pattern editing in MVP** (that's v1.0 Sprint 6). "Always" persists to `.event4u-agent/permissions.json` (user-scope).
+- [ ] **T-305 — Halt-Protocol rendering.** When the agent emits a `halt` event with `{question, options[]}`, the chat UI renders a card with numbered option buttons + a free-text input. Clicking a button or typing + Enter sends the response back to the agent. **Single-select only in MVP** — multi-select and form-variant are v1.0 Sprint 7.
+- [ ] **T-306 — "Ask about selection" editor action.** JetBrains: `AnAction` registered in `plugin.xml` under `EditorPopupMenu`. VS Code: `vscode.commands.registerCommand` with a keybinding `Ctrl+Shift+A` / `Cmd+Shift+A`. The action sends the selected text + file path + line range as a new chat turn. **One editor action only — Intention Actions, right-click polish, Floating Toolbar are all v1.0 Sprint 10.**
+
+### Exit gate — Phase 3 exit criteria
+
+- [ ] User asks "What does function X in src/foo.ts do?" — agent calls `read_file`, gets content, answers. **Two turns visible in chat: tool call + agent response.**
+- [ ] User asks "Add a docstring to function Y" — agent calls `read_file`, generates new content, calls `write_file`, diff shows, user approves, file written.
+- [ ] User asks "Run `rm -rf /` to clean up" — Hard-Floor blocks the call, halt-card shows "This pattern is on the Hard-Floor deny-list per ADR-004."
+- [ ] "Ask about selection" works in both IDEs from at least the right-click menu and a keyboard shortcut.
+
+---
+
+## Phase 4 — agent-config v0 + Claude CLI mode + Tracking (4 weeks)
+
+> **Goal.** The demo. `/commit` works end-to-end in API mode AND Claude CLI mode. Tracking persists. Hard caps fire. Stop button kills any state cleanly. Internal demo to event4u team.
+>
+> **Council finding #2 (consensus):** CLI mode is a hidden epic. Sprint 4 scopes it **tight**: Claude CLI only, `--output-format=stream-json` only, no interactive commands (fail with clear message: "This command needs interactive input — use IDE terminal directly in MVP"), no session resume, no session browser. Codex CLI + Gemini CLI + per-CLI gear panel + session browser are v1.0 Sprints 5 + 12.
+>
+> **Council finding #6 (consensus):** Hard Caps without a cost estimate is "$5 remaining, is this safe?". T-411 was cap-only — split into T-411a (caps) + T-411b (input-token estimate, the easy half). Output projection stays cut to v1.0 Sprint 7.
+
+- [ ] **T-401 — agent-config tree-walker.** `packages/core/src/config/agent-config-walker.ts` scans (in order): `.event4u-agent/` → `.augment/` → `.agent-src/`. For each Skill / Rule / Command found: parse YAML frontmatter (gray-matter), validate against Zod schema (built from agent-config's `scripts/schemas/`), index in-memory. **Filter logic from Phase 0 Spike 0.4** applies — if rule-injection cost was >15k tokens, only "always-active" rules from the filtering strategy are prepended; "context-active" rules are loaded on demand.
+- [ ] **T-402 — Slash-command picker.** Chat input watches for `/` prefix and shows a picker overlay. Items: the command name + description (first line of frontmatter). Fuzzy search by command name. **Favourites in MVP if Phase 0 Spike 0.5 feedback called for it** — otherwise alphabetic full list. Keyboard navigation (Up/Down + Enter).
+- [ ] **T-403 — `/commit` as first lauffähiges agent-config command.** Reads `commands/commit.md` from the agent-config tree (via T-401). Injects the command's procedure into the system prompt. Runs the 2-step tool-call loop from Sprint 3 — read `git status`, propose message, halt for user approval. **Command identity comes from Phase 0 Phase 8 (Demo Script v0)** — if the team picked a different command than `/commit`, swap here.
+- [ ] **T-404 — Rules as always-active prepend.** From T-401's index, take all "always-active" rules (per filtering strategy from Phase 0 Spike 0.4) and concat them into the system prompt at every turn. Use Anthropic `cache_control: { type: "ephemeral" }` on the rule block so cached reads cost 10% of fresh reads. Add a unit test: changing one rule file invalidates the cache, costs jump on the next turn.
+- [ ] **T-405 — Claude CLI detection service.** `packages/core/src/cli-detection/claude.ts` runs on plugin start: `which claude` → version `claude --version` → check Semver >=0.10.0 (from `CliCapabilities` manifest) → light auth probe (`claude config get` with timeout 2s; if it succeeds, CLI is signed in). Result feeds the Mode toggle in T-407. **Claude only — Codex + Gemini are v1.0 Sprint 5.**
+- [ ] **T-406 — Claude Code CLI Backend.** `packages/core/src/llm/claude-cli.ts` implements `LLMBackend` with `mode: "cli"`. Spawns `claude -p --output-format=stream-json --input-format=stream-json` as a subprocess. **No PTY — naive `spawn` pipe.** Interactive prompts will hang or fail; the wrapper detects "no output for 10s after stdin closed" and aborts with clear error: "This command appears to need interactive input — not supported in MVP." Token-extraction from `result` events (per CLI manifest in `packages/core/src/llm/cli/manifests/claude.ts`).
+- [ ] **T-407 — Mode toggle in chat header.** Two states: `API` and `CLI`. Default per `.agent-settings.yml::llm.default_mode` (per `auto`: use CLI if detected, else API). Toggle is per-conversation, not global. Switch invalidates the in-flight turn (if any) and starts the next turn with the new backend.
+- [ ] **T-408 — Token-tracking SQLite persistence.** `packages/core/src/tracking/db.ts` opens `.event4u-agent/tracking.db` with `better-sqlite3`. Schema per PLAN.md §14.2: `step_events`, `conversation_summaries`. Every step (API call or CLI stream completion) writes one row. Add an `activity` column (`agent` / `chat` / `cli-agent` / `skill` / `system`) and a `pricing_book_version` column (council finding #7 round-2: audit-trace which pricing fired which row).
+- [ ] **T-409 — Real-time streaming counter.** During an in-flight turn, chat header shows `🟢 Streaming · In: 14,238 / Out: 412 · $0.0089 so far · Cancel`. Updates on every streaming chunk (debounced 100ms so UI doesn't thrash). On stream end, line freezes with final values.
+- [ ] **T-410 — Step-level cost footer per assistant block.** Below each assistant message: `⏱ 4.2s · In: 18,422 (cache: 14,200) · Out: 487 · $0.0156` + `3 steps · 3 tool calls · TTFT 412ms`. Click opens a drawer with all step events for the turn (read from `tracking.db`).
+- [ ] **T-411a — Hard caps + confirm dialog.** Read caps from `.agent-settings.yml::tracking.caps.{single_step,daily}`. On send: compare projected upper-bound cost against caps. `warn_above_usd`: yellow banner. `confirm_above_usd`: modal dialog before send. `hard_block_above_usd`: button disabled with message. Subscription caps (Claude Pro 200 msg / 5h) tracked separately and shown as warnings only — no block (CLI subscription quotas are CLI's responsibility).
+- [ ] **T-411b — Input-token cost estimate (council finding #6 round-2 host modification).** Compute the exact input-token count via Anthropic `messages.countTokens()` (or local `tiktoken` for Claude — Anthropic's tokenizer is open-source). Display in the chat input footer: `Context: ≈14,238 tok · Input cost: $0.043 · Output cap: 2k tok · Daily remaining: $4.27`. **No output projection in MVP** — that's the hard part (council finding #6 unmodified version) and stays cut to v1.0 Sprint 7.
+- [ ] **T-412 — Stop button + ESC shortcut.** Three-layer cancellation per PLAN.md §9.12.1. Layer 1: UI Stop button + ESC when chat has focus. Layer 2: Agent Core abort signal — cancel in-flight LLM call, signal active tool calls. Layer 3: Backend cancel — API: HTTP `request.abort()`; CLI: SIGINT to the subprocess, 2s grace, then SIGKILL. End-to-end tests with a deliberately blocking script (`sleep 60 & wait`) — Stop must complete within 4s.
+- [ ] **T-413 — Audit-log write-path.** Every tool call + every permission-gate decision + every Hard-Floor block writes one JSONL line to `.event4u-agent/audit-<date>.jsonl` (immutable — append-only, file is `chmod 444` after each write isn't quite right since we're appending; use a separate rotated file per session instead). No reader UI in MVP — that's v1.0 Sprint 7. Just write the log.
+- [ ] **T-414 — Internal demo to event4u team.** Follow Phase 0 Phase 8 demo script verbatim. Capture team feedback in `agents/analysis/demo-feedback-<date>.md`. **Acceptance:** demo target above passes in both IDEs, stop wires cleanly, hard caps fire on a prepared "expensive prompt" scenario.
+
+### Exit gate — Phase 4 exit criteria
+
+- [ ] Demo target passes in PhpStorm 2024.2+ AND VS Code 1.90+.
+- [ ] `/commit` works in both API mode and Claude CLI mode (toggle switches mid-conversation).
+- [ ] `tracking.db` has rows for every step of the demo, with `pricing_book_version` populated.
+- [ ] Hard cap demo fires the confirm-dialog at the prepared trigger point.
+- [ ] Stop button kills a sleeping-subprocess scenario in <4s.
+- [ ] Team feedback captured. If a critical demand emerged (e.g., "we want `/release-notes` not `/commit`"), it's logged as a Sprint-5 candidate, not a Sprint-4 slip.
+
+---
+
+## Phase 5 — Buffer (1-3 weeks)
+
+> Explicitly planned for solo-dev pacing. If Sprint 4 overruns by a week, this is the absorber. If buffer is unused, pull one or two items from `road-to-v1-0.md` Sprint 5 (OpenAI API or Codex CLI) into MVP-Plus.
+
+- [ ] **B-1 — Bug-fix sprint.** Triage post-demo bugs from the event4u team's first-week of usage. No new features.
+- [ ] **B-2 — Internal docs.** Quick-start README, `docs/architecture.md` v0, `docs/customization.md` (settings reference for MVP fields).
+- [ ] **B-3 — Cross-platform verification.** macOS Intel + ARM, Linux x64, Windows x64. Document each platform-specific gotcha discovered.
+- [ ] **B-4 — Pull-up candidate (only if buffer is healthy):** OpenAI API backend (T-501 from `road-to-v1-0.md`), so MVP-Plus demo can show provider-agnosticism.
+
+---
+
+## Acceptance criteria — MVP overall
+
+- [ ] Sprint 1 exit criteria met.
+- [ ] Sprint 2 exit criteria met.
+- [ ] Sprint 3 exit criteria met.
+- [ ] Sprint 4 exit criteria met.
+- [ ] Demo target ("Open PhpStorm + VS Code … `/commit` works in both API and CLI mode …") passes.
+- [ ] Buffer used or remaining items pulled from v1.0.
+- [ ] `agents/analysis/demo-feedback-<date>.md` exists and is read by the author before sprint planning of v1.0.
+- [ ] `road-to-v1-0.md` is the next active roadmap.
+
+## Notes
+
+- **Council source (no path-link per `no-roadmap-references`):** Council (claude-sonnet-4-5 + gpt-4o, 2026-05-28, analysis lens, 2 rounds, $0.12) drove these specific changes vs the original PLAN.md §7.1/§17 Phase 1:
+  1. Sprint 3 ships a minimum 2-step tool-call loop (consensus finding #1 — original "single-shot" was incoherent).
+  2. Sprint 4 CLI mode is scoped tight: Claude only, no PTY, no resume, no session browser (consensus finding #2).
+  3. T-411 split into T-411a (caps) + T-411b (input-token estimate, the cheap half) — output projection stays cut (consensus finding #6 + host modification).
+  4. T-408 adds `pricing_book_version` column for audit-trace (round-2 finding #7 — Pricing Book audit gap).
+  5. T-403 references the command picked by Phase 0 Phase 8 (Demo Script v0), not hard-coded to `/commit` (round-2 finding — demo without script).
+  6. T-404 rule-injection respects Phase 0 Spike 0.4 filtering strategy if rule cost exceeded budget.
+- **Rejected council findings (host verdict):**
+  - "Cut CLI entirely from MVP and v1.0" (Reviewer A round-2) — rejected as out-of-scope unilateral move. CLI is a stated differentiator; scoped tight in MVP (Claude only, no PTY) is the host-modified path.
+  - "Expand Sigstore to staleness/rotation/downgrade-protection" (Reviewer A round-1) — rejected; v1.0 Sprint 14 keeps just the signature. Key rotation goes in an ops doc, not engineering work.
+- **Hard-floor reminder.** No commits / PRs / pushes during sprint work without explicit user authorisation each time. See `commit-policy` / `scope-control`. Sprint exits are inflection points where a commit batch becomes appropriate; the user authorises.
+- **What happens if Phase 0 Phase 1 (Continue-fork) verdict was `Fork`:** this roadmap is partially obsolete. Sprint 1 becomes "Fork Continue, strip naming, replace provider-layer / cost-tracking / agent-config integration." Sprints 2-4 follow but with significant deletions and significant lifts from Continue. Re-author `road-to-mvp-from-fork.md` before starting.
+- **Cross-reference.** Predecessor: `road-to-phase-0-validation.md`. Successor: `road-to-v1-0.md`.

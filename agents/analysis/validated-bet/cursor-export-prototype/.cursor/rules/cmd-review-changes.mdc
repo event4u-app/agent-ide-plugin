@@ -1,0 +1,83 @@
+---
+description: When the user wants a critical review of uncommitted changes — types "/review-changes", "review the diff", "code review the changes", "be brutal", "poke holes". Runs four judge lenses (bug-hunter, code-quality, test-coverage, security-auditor) plus optional architecture lens.
+globs: []
+alwaysApply: false
+---
+
+# /review-changes — multi-judge diff review
+
+> Compiled from `@event4u/agent-config/.agent-src/commands/review-changes.md`.
+
+## When this fires
+
+User intent: "/review-changes", "review my diff", "code review this", "be brutal about this", "do-and-judge".
+
+## Steps
+
+### 1. Capture the diff
+
+```bash
+git diff HEAD                # working tree vs HEAD
+git diff --cached            # staged
+git diff <base>...HEAD       # full branch diff if user named a base
+```
+
+Pick the scope the user asked for. Default: `git diff HEAD` (everything not yet committed).
+
+### 2. Run the four judges sequentially
+
+#### Judge 1 — bug-hunter (correctness)
+- Off-by-one, null-safety, edge cases, type coercion, race conditions.
+- Error paths: do they fail closed or open?
+- Hidden assumptions about input shape / nullability / encoding.
+- Output: list of concrete bug candidates, file:line, severity.
+
+#### Judge 2 — code-quality (readability)
+- Naming: do identifiers carry meaning the reader can use?
+- Single responsibility: any function doing 3+ things?
+- DRY: any duplicated logic that hides a missed abstraction?
+- Dead code / unused params / leftover debug prints.
+- Mismatch with codebase conventions.
+
+#### Judge 3 — test-coverage (assertion completeness)
+- Does the diff add tests proportional to the new behavior?
+- Are negative cases / error paths tested, not just happy path?
+- Any over-mocking that's testing the mock instead of the unit?
+- Regression test for a bug fix — is one included?
+
+#### Judge 4 — security-auditor (abuse cases)
+- Auth / authz changes — any silent permission loosening?
+- Input handling — injection / XSS / path traversal surfaces?
+- Secrets in diff (`.env`, tokens, keys hard-coded)?
+- New external HTTP calls — to vetted endpoints?
+- File / shell operations with user-controlled paths?
+
+#### Judge 5 — architecture (optional, runs if diff is ≥ 5 files OR cross-module)
+- Boundary breaks: does the diff bypass a module's public API?
+- Dependency direction: any layer-violation introduced?
+- Service-contract changes: do consumers need to update?
+
+### 3. Synthesize
+
+One numbered list, **critical** issues first (`bug` / `security`), then `quality` / `test-coverage`, finally `nit`. Each item:
+```
+[severity] file:line — <finding>
+  fix-sketch: <one sentence>
+```
+
+### 4. Close prompt
+
+End with:
+```
+Review done. Pick one:
+1. Apply suggested fixes — equivalent to /simplify, I'll patch the working tree.
+2. Comment on PR (only if a PR exists) — post findings as inline review comments.
+3. Just stop — you'll triage the list yourself.
+```
+
+## Forbidden
+
+- Soft "looks good overall" verdicts without naming a finding.
+- Praising the diff before listing issues (per `direct-answers` no-flattery rule).
+- Auto-applying fixes (Step 4 option 1) without explicit user pick.
+- Posting PR comments (Step 4 option 2) without explicit user pick — per `no-pr-progress-comments` rule.

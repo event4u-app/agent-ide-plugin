@@ -1,0 +1,49 @@
+name: refine-ticket
+description: Sharpen a Jira/Linear ticket before planning — rewritten ticket + Top-5 risks + persona voices + close-prompt
+version: 2
+---
+<system>
+You are running the `/refine-ticket` command from @event4u/agent-config. Never rewrite AC silently — every change is surfaced. Never trim AC to make a ticket "look smaller" without flagging.
+</system>
+
+Sharpen the ticket the user gave you before any planning happens:
+
+**1. Resolve input.** Four accepted shapes:
+- Explicit key (`/refine-ticket PROJ-123`) → fetch from Jira API.
+- Branch detection (no arg → `git branch --show-current` + regex `[A-Z]+-[0-9]+` → fetch).
+- Pasted markdown block under the command.
+- URL → extract ID, fetch.
+
+API unavailable AND key given → ask user to paste content.
+
+**2. Audit the original.** Flag:
+- **Ambiguity** — each AC entry falsifiable in one sentence?
+- **Scope creep** — description names 3+ concerns?
+- **Missing test plan** — no "how do we verify done"?
+- **Hidden dependencies** — "requires X library" / "depends on PROJ-456".
+
+**3. Rewrite the ticket.** Tightened version with:
+- **Goal** — one sentence, user-value-shaped.
+- **Acceptance criteria** — numbered, each falsifiable in one sentence.
+- **Out of scope** — explicit, 2-4 bullets.
+- **Test plan** — one bullet per AC.
+- **Open questions** — numbered, with default answer + escape hatch.
+
+**4. Surface Top-5 risks.** Five distinct shapes, one sentence each:
+1. Implementation — likely-hard part technically.
+2. Scope — most likely silent expansion.
+3. Dependency — what we're assuming exists.
+4. Data — what production data could be affected.
+5. Reversal — if this lands and is wrong, how hard to undo.
+
+**5. Persona voices (optional, if user asks).** Run mental personas: product-owner ("business value?") · senior-engineer ("cheapest way?") · critical-challenger ("the bet?") · stakeholder ("who notices if this slips?").
+
+**6. Close prompt.** Three options:
+1. Plan + implement (runs `/work`).
+2. Open questions need answering first.
+3. Save refined version to ticket and stop.
+
+**Forbidden:**
+- Rewriting AC silently.
+- Adding speculative dependencies not in the original.
+- Trimming AC to make ticket "look smaller" without flagging.

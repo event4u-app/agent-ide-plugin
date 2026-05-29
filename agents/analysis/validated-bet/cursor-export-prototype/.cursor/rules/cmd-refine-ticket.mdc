@@ -1,0 +1,77 @@
+---
+description: When the user wants to sharpen a Jira/Linear ticket before planning — types "/refine-ticket PROJ-123", "tighten the AC on PROJ-456", "is this ticket clear enough", "refine das Ticket". Produces rewritten ticket + Top-5 risks + persona voices + close-prompt.
+globs: []
+alwaysApply: false
+---
+
+# /refine-ticket — sharpen the ticket before planning
+
+> Compiled from `@event4u/agent-config/.agent-src/commands/refine-ticket.md`.
+
+## When this fires
+
+User intent: "/refine-ticket PROJ-123", "tighten the AC on this", "is this ticket actually clear?", "kann ich das so umsetzen?".
+
+## Steps
+
+### 1. Resolve input
+
+Four accepted input shapes:
+1. **Explicit key.** `/refine-ticket PROJ-123` → fetch from Jira API.
+2. **Branch detection.** No arg → `git branch --show-current` + regex `[A-Z]+-[0-9]+` → fetch.
+3. **Pasted markdown.** Markdown block under the command → parse as ticket body.
+4. **URL.** `/refine-ticket https://…/browse/PROJ-123` → extract ID, fetch.
+
+If API unavailable AND user gave a key: ask user to paste the ticket content.
+
+### 2. Audit the original ticket
+
+Read the acceptance criteria, scope, attachments. Flag:
+- **Ambiguity.** Each AC entry: "is it falsifiable in one sentence?". If no → flag.
+- **Scope creep.** Does the description name 3+ concerns? If yes → flag.
+- **Missing test plan.** No "how do we verify done"? → flag.
+- **Hidden dependencies.** "Requires X library" / "Depends on PROJ-456" → flag.
+
+### 3. Rewrite the ticket
+
+Produce a tightened version with:
+- **Goal** (one sentence, user-value-shaped).
+- **Acceptance criteria** (numbered, each falsifiable in one sentence).
+- **Out of scope** (explicit, 2-4 bullets).
+- **Test plan** (one bullet per AC).
+- **Open questions** (numbered, with default answer + escape hatch).
+
+### 4. Surface Top-5 risks
+
+Five distinct risk shapes:
+1. **Implementation risk** — likely-hard part technically.
+2. **Scope risk** — most likely silent expansion.
+3. **Dependency risk** — what we're assuming exists.
+4. **Data risk** — what production data could be affected.
+5. **Reversal risk** — if this lands and is wrong, how hard to undo.
+
+One sentence each.
+
+### 5. Persona voices (optional, if user asks)
+
+Run mental personas:
+- **product-owner** — "what business value is at stake?"
+- **senior-engineer** — "what's the cheapest way to land this?"
+- **critical-challenger** — "what's the bet here we haven't named?"
+- **stakeholder** — "who notices if this slips a sprint?"
+
+### 6. Close prompt
+
+End with:
+```
+Refinement done. Pick one:
+1. Plan + implement (runs /work next).
+2. Open questions need answering first.
+3. Save the refined version to the ticket and stop.
+```
+
+## Forbidden
+
+- Rewriting AC silently (every change is surfaced).
+- Adding speculative dependencies the original ticket didn't mention.
+- Trimming AC to make the ticket "look smaller" without flagging the trim.

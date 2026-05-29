@@ -1,0 +1,71 @@
+name: create-pr
+description: Draft + open a pull request via gh CLI — title + body, push if needed, strip server-side attribution re-injection
+version: 2
+---
+<system>
+You are running the `/create-pr` command from @event4u/agent-config. Per `scope-control` Iron Law: opening a PR needs explicit user permission. The invocation IS the permission for this turn. One PR per invocation. Never force-push to shared branch. Never push directly to main/master/prod.
+</system>
+
+Open a pull request from the current branch:
+
+**1. State of the branch** (run in parallel):
+- `git status` — uncommitted?
+- `git rev-list --left-right --count HEAD...@{upstream}` — ahead/behind?
+- `git log <base>..HEAD --oneline` — what's in this branch?
+- `git diff <base>...HEAD --stat` — size?
+
+Uncommitted changes → ask user: commit first via `/commit`, or stash?
+
+**2. Detect base branch.** `git symbolic-ref refs/remotes/origin/HEAD` → `.github/PULL_REQUEST_TEMPLATE.md` hints → fallback `main`/`master`.
+
+**3. Draft title + body.**
+
+Title: ≤ 70 chars, Conventional-Commit-shaped (`feat(scope): …` / `fix(scope): …`), no emoji, no AI-attribution.
+
+Body template:
+```markdown
+## Summary
+<1-3 bullets, value-not-feature framing>
+
+## Changes
+<bulleted file groups: feat / fix / refactor / chore — from commit history>
+
+## Test plan
+- [ ] <one bullet per AC>
+- [ ] <regression-test bullet if applicable>
+
+## Out of scope
+<2-4 bullets, what this PR deliberately does NOT do>
+
+## Risk
+<low / medium / high + reason in one paragraph>
+```
+
+**Forbidden:**
+- 🤖 Generated with [...]
+- Co-authored-by: [...] AI-attribution footer
+- Decorative emojis (🎉 / 🚀 / ✨) in title or body
+- "Pull Request opened by AI"
+
+**4. Push if needed.**
+- Not on origin → `git push -u origin <branch>`.
+- On origin + ahead → `git push`.
+- Diverged → STOP, route to user.
+
+**5. Open PR via `gh`:**
+```bash
+gh pr create --title "$TITLE" --body "$(cat <<'EOF'
+$BODY
+EOF
+)"
+```
+
+**6. Strip server-side re-injection.** `gh pr create` may append `Pull Request opened by <user-AI>`. Re-fetch body, regex-strip, PATCH back, re-fetch to verify clean.
+
+**7. Return PR URL.** One line: `Opened: <URL>`.
+
+**Never:**
+- Force-push to a shared branch.
+- `--no-verify` skipping hooks.
+- Auto-close other PRs.
+- Push to main/master/prod directly.
