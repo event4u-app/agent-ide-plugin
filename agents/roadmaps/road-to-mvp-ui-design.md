@@ -76,6 +76,44 @@ complexity: heavy
   Already easier to style; the CSS hooks are there. Augment-parity is a
   matter of writing the right CSS + a few more components.
 
+### Data + render contract (SweepAI-derived)
+
+The chat surface renders off **one message model**, not ad-hoc UI channels.
+Ported from the `sweepai/sweep` chat frontend (`sweep_chat`), adapted to our
+NDJSON-over-stdio transport. This contract is the design authority; the
+actual rendering lands in the chat-UI tasks (`road-to-mvp-ui-finish.md`
+T-202 JetBrains / T-203 VS Code).
+
+- **`Message` + `annotations`.** A message is
+  `{ role: 'user'|'assistant'|'tool', content, function_call?, annotations? }`
+  (port of `sweep_chat/lib/types.ts:70`). **Artifacts ride on the message
+  as `annotations`** (snippets in context, code suggestions, status rows) —
+  they are NOT separate UI surfaces. Render order is deterministic off the
+  message object. This is the single most portable idea from sweep: one
+  source of truth, every artifact attached to the turn that produced it.
+- **JSON-Patch streaming (render payload, not transport).** Keep our NDJSON
+  newline framing — it is simpler and more robust than sweep's
+  bracket-balance reassembler. Adopt only the **payload design**
+  (`sweep_chat/App.tsx:671`): the sidecar streams RFC-6902 patch deltas
+  (`{op:'replace', path:'/messages/-/content', value}`) so the client
+  appends tokens to a running document instead of re-sending whole
+  messages. An in-band `op:'error'` patch is the error channel. **Progress
+  strings are first-class stream items** for long operations (drives the
+  C-9 status surface). An interrupt flag the render loop polls maps to the
+  ESC/Stop cancel message (C-6).
+- **Authoritative state lives in the sidecar.** Sweep keeps all chat state
+  in one 1849-line client component — fine for a single web app, wrong for
+  a sidecar feeding two clients. Our authoritative `Message[]` stays in the
+  Node sidecar; both IDE clients are thin renderers applying the patch
+  stream.
+- **Out of scope for v0 (forward pointers).** The full snippet/context
+  display (sweep's `ContextSideBar` + `SnippetSearch`) and the
+  code-suggestion editor with a `pending|processing|done|error` state
+  machine + per-suggestion stage/apply (`CodeMirrorSuggestionEditor.tsx`)
+  are v1.0 — they belong with the Context Engine (`road-to-v1-0.md`
+  Phase 6/8) and the multi-file edit UI (Phase 7 T-703 action cards). v0
+  delivers only the chip-rail subset (C-7).
+
 ## Visual language
 
 ### Spacing scale (use these constants, do NOT eyeball values)

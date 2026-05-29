@@ -19,8 +19,7 @@ class WrapLayout(
 ) : FlowLayout(align, hgap, vgap) {
     override fun preferredLayoutSize(target: Container): Dimension = layoutSize(target, true)
 
-    override fun minimumLayoutSize(target: Container): Dimension =
-        layoutSize(target, false).apply { width -= hgap + 1 }
+    override fun minimumLayoutSize(target: Container): Dimension = layoutSize(target, false).apply { width -= hgap + 1 }
 
     private fun layoutSize(
         target: Container,

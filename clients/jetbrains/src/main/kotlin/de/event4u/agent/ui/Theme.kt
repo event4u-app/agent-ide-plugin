@@ -88,8 +88,7 @@ object Theme {
 
         fun tiny(): Font = JBFont.medium().deriveFont(MINI_FONT_SIZE)
 
-        fun monospace(size: Float = body().size2D.toFloat()): Font =
-            Font(Font.MONOSPACED, Font.PLAIN, size.toInt())
+        fun monospace(size: Float = body().size2D.toFloat()): Font = Font(Font.MONOSPACED, Font.PLAIN, size.toInt())
 
         private const val MINI_FONT_SIZE = 10f
     }

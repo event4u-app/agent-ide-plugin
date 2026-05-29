@@ -38,7 +38,10 @@ class Composer(
     private val callbacks: Callbacks,
 ) : RoundedPanel(null, Theme.Radius.CARD) {
     interface Callbacks {
-        fun onSend(text: String, chips: List<ChipPayload>)
+        fun onSend(
+            text: String,
+            chips: List<ChipPayload>,
+        )
 
         fun onStop()
 
@@ -95,11 +98,12 @@ class Composer(
             enabled = false,
             onClick = callbacks::onStop,
         )
+    // paperclip ships disabled until the file picker is wired (Phase 4 host pass).
     private val paperclipButton =
         IconButton.create(
             AllIcons.General.Attachment,
             tooltip = "Attach file or image",
-            enabled = false, // file picker wired in Phase 4 host pass
+            enabled = false,
             onClick = {},
         )
     private val sparkleButton =
