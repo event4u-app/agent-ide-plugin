@@ -1,0 +1,145 @@
+import { readFile } from 'node:fs/promises';
+import { parse as parseYaml, YAMLParseError } from 'yaml';
+import { z, type ZodType } from 'zod';
+
+/**
+ * MVP-relevant subset of `.agent-settings.yml`. All other fields the consumer
+ * project may have (per agent-config's full schema) are accepted but ignored
+ * by this reader — additive forward-compat is intentional.
+ *
+ * Roadmap: T-208. Hot-reload is T-207's surface; this reader is a pure
+ * function over file content.
+ */
+
+const LlmProvider = z.enum(['anthropic']);
+const LlmMode = z.enum(['api', 'cli', 'auto']);
+const Role = z.enum(['developer', 'reviewer', 'tester', 'po', 'incident', 'planner']);
+
+const CommandSuggestionSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    senior_gate: z.boolean().default(false),
+  })
+  .partial()
+  .default({});
+
+const LlmSchema = z
+  .object({
+    default_provider: LlmProvider.default('anthropic'),
+    default_mode: LlmMode.default('auto'),
+  })
+  .partial()
+  .default({});
+
+const RolesSchema = z
+  .object({
+    active_role: Role.optional(),
+  })
+  .partial()
+  .default({});
+
+const CommandsSchema = z
+  .object({
+    suggestion: CommandSuggestionSchema,
+  })
+  .partial()
+  .default({});
+
+export const AgentSettingsSchema = z
+  .object({
+    llm: LlmSchema,
+    roles: RolesSchema,
+    commands: CommandsSchema,
+  })
+  .partial()
+  .passthrough()
+  .transform((parsed) => ({
+    llm: {
+      default_provider: parsed.llm?.default_provider ?? 'anthropic',
+      default_mode: parsed.llm?.default_mode ?? 'auto',
+    },
+    roles: {
+      active_role: parsed.roles?.active_role,
+    },
+    commands: {
+      suggestion: {
+        enabled: parsed.commands?.suggestion?.enabled ?? true,
+        senior_gate: parsed.commands?.suggestion?.senior_gate ?? false,
+      },
+    },
+  }));
+
+export type AgentSettings = z.infer<typeof AgentSettingsSchema>;
+
+export const DEFAULT_SETTINGS: AgentSettings = AgentSettingsSchema.parse({});
+
+export class AgentSettingsError extends Error {
+  constructor(
+    message: string,
+    override readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = 'AgentSettingsError';
+  }
+}
+
+/**
+ * Parse settings from a YAML string. Throws {@link AgentSettingsError} on
+ * malformed YAML or schema violation; never throws on missing optional fields
+ * (those get defaults).
+ */
+export function parseSettings(yamlText: string): AgentSettings {
+  let raw: unknown;
+  try {
+    raw = parseYaml(yamlText);
+  } catch (err) {
+    if (err instanceof YAMLParseError) {
+      throw new AgentSettingsError(
+        `.agent-settings.yml: malformed YAML at line ${err.linePos?.[0]?.line ?? '?'}: ${err.message}`,
+        err,
+      );
+    }
+    throw new AgentSettingsError(`.agent-settings.yml: parse failed`, err);
+  }
+
+  // Empty file → `null`, treat as empty object so defaults fill in.
+  const normalised = raw == null ? {} : raw;
+  if (typeof normalised !== 'object' || Array.isArray(normalised)) {
+    const kind = Array.isArray(normalised) ? 'array' : typeof normalised;
+    throw new AgentSettingsError(`.agent-settings.yml: top-level must be a mapping, got ${kind}`);
+  }
+
+  const parsed = AgentSettingsSchema.safeParse(normalised);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  · ${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('\n');
+    throw new AgentSettingsError(`.agent-settings.yml: schema violation\n${issues}`, parsed.error);
+  }
+  return parsed.data;
+}
+
+/**
+ * Read settings from a path. File not found → returns {@link DEFAULT_SETTINGS}
+ * (a fresh consumer with no .agent-settings.yml is a valid state). Other IO
+ * errors propagate.
+ */
+export async function loadSettings(path: string): Promise<AgentSettings> {
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch (err) {
+    if (isNodeError(err) && err.code === 'ENOENT') {
+      return DEFAULT_SETTINGS;
+    }
+    throw new AgentSettingsError(`.agent-settings.yml: cannot read ${path}`, err);
+  }
+  return parseSettings(text);
+}
+
+function isNodeError(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && 'code' in err;
+}
+
+// Type narrowed re-export for callers that want to assert the schema directly.
+export const _internal: { schema: ZodType<unknown> } = { schema: AgentSettingsSchema };

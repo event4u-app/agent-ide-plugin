@@ -1,0 +1,112 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  AgentSettingsError,
+  DEFAULT_SETTINGS,
+  loadSettings,
+  parseSettings,
+} from './agent-settings.js';
+
+describe('parseSettings', () => {
+  it('returns defaults on empty YAML', () => {
+    expect(parseSettings('')).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('returns defaults on null YAML (just comments)', () => {
+    expect(parseSettings('# comment only\n')).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('parses the MVP-relevant fields', () => {
+    const yamlText = `
+llm:
+  default_provider: anthropic
+  default_mode: cli
+roles:
+  active_role: developer
+commands:
+  suggestion:
+    enabled: false
+    senior_gate: true
+`;
+    expect(parseSettings(yamlText)).toEqual({
+      llm: { default_provider: 'anthropic', default_mode: 'cli' },
+      roles: { active_role: 'developer' },
+      commands: { suggestion: { enabled: false, senior_gate: true } },
+    });
+  });
+
+  it('ignores unknown top-level keys (forward-compat)', () => {
+    const yamlText = `
+llm:
+  default_mode: api
+quality:
+  local_auto_run: false
+future_feature:
+  enabled: true
+`;
+    const result = parseSettings(yamlText);
+    expect(result.llm.default_mode).toBe('api');
+    // Defaults for non-set MVP fields still fill in.
+    expect(result.roles.active_role).toBeUndefined();
+    expect(result.commands.suggestion.enabled).toBe(true);
+  });
+
+  it('ignores unknown nested keys under MVP sections', () => {
+    const yamlText = `
+llm:
+  default_mode: cli
+  future_field: surprise
+commands:
+  suggestion:
+    enabled: false
+    unknown_subkey: 42
+`;
+    const result = parseSettings(yamlText);
+    expect(result.llm.default_mode).toBe('cli');
+    expect(result.commands.suggestion.enabled).toBe(false);
+  });
+
+  it('throws AgentSettingsError on malformed YAML', () => {
+    expect(() => parseSettings('llm:\n  default_mode: : :')).toThrow(AgentSettingsError);
+  });
+
+  it('throws AgentSettingsError on invalid enum value', () => {
+    expect(() => parseSettings('llm:\n  default_mode: telepathy\n')).toThrow(/schema violation/);
+  });
+
+  it('throws on top-level array (not a mapping)', () => {
+    expect(() => parseSettings('- one\n- two\n')).toThrow(/top-level must be a mapping/);
+  });
+});
+
+describe('loadSettings', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'event4u-settings-'));
+  });
+
+  afterEach(async () => {
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('returns DEFAULT_SETTINGS when file does not exist', async () => {
+    const result = await loadSettings(join(tempDir, 'missing.yml'));
+    expect(result).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('reads and parses a real file', async () => {
+    const path = join(tempDir, '.agent-settings.yml');
+    await writeFile(path, 'llm:\n  default_mode: cli\n', 'utf8');
+    const result = await loadSettings(path);
+    expect(result.llm.default_mode).toBe('cli');
+  });
+
+  it('propagates AgentSettingsError on malformed file', async () => {
+    const path = join(tempDir, 'bad.yml');
+    await writeFile(path, 'llm:\n  default_mode: : :', 'utf8');
+    await expect(loadSettings(path)).rejects.toThrow(AgentSettingsError);
+  });
+});

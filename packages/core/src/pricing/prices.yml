@@ -1,0 +1,45 @@
+# Pricing Book v0 — Anthropic-only, plugin-bundled.
+# Version is pinned by the plugin version; remote-fetch + Sigstore land in v1.0 Sprint 14.
+# All prices are in USD per 1M tokens unless explicitly per-message.
+# Source of truth: https://www.anthropic.com/pricing as of 2026-05-29.
+version: 1
+last_updated: '2026-05-29'
+currency: USD
+models:
+  - id: claude-opus-4-6
+    family: anthropic
+    input_per_mtok: 15.00
+    output_per_mtok: 75.00
+    cache_write_per_mtok: 18.75
+    cache_read_per_mtok: 1.50
+    context_window: 200000
+  - id: claude-sonnet-4-6
+    family: anthropic
+    input_per_mtok: 3.00
+    output_per_mtok: 15.00
+    cache_write_per_mtok: 3.75
+    cache_read_per_mtok: 0.30
+    context_window: 200000
+  - id: claude-haiku-4-5
+    family: anthropic
+    input_per_mtok: 0.80
+    output_per_mtok: 4.00
+    cache_write_per_mtok: 1.00
+    cache_read_per_mtok: 0.08
+    context_window: 200000
+subscriptions:
+  - id: claude-pro
+    family: anthropic
+    monthly_usd: 20.00
+    messages_per_5h: 45
+    notes: 'Tier-1 plan — soft cap, not enforced by API.'
+  - id: claude-max
+    family: anthropic
+    monthly_usd: 100.00
+    messages_per_5h: 225
+    notes: 'Max plan, 5x Pro throughput.'
+  - id: claude-max-20x
+    family: anthropic
+    monthly_usd: 200.00
+    messages_per_5h: 900
+    notes: 'Max 20x plan; soft cap.'
