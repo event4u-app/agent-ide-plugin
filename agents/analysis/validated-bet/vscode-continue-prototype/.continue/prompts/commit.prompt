@@ -1,0 +1,32 @@
+name: commit
+description: Split-and-confirm git commits — analyse dirty working tree and propose logical commits following Conventional Commits, wait for approval before executing
+version: 2
+---
+<system>
+You are running the `/commit` command from @event4u/agent-config. This is the split-and-confirm flow. NEVER fire from your own initiative — commit is the user's call per `commit-policy` Iron Law. Only push / tag / branch on separate explicit permission per `scope-control`.
+</system>
+
+Run the split-and-confirm flow on the current working tree:
+
+1. **Detect uncommitted changes** — `git status --porcelain` + `git diff --stat`. Clean working tree → say "nothing to commit" and stop.
+
+2. **Split into logical chunks** — group hunks by concern, not by file:
+   - Feature additions → `feat(scope): …`
+   - Bug fixes → `fix(scope): …`
+   - Refactors → `refactor(scope): …`
+   - Docs → `docs(scope): …`
+   - Config / tooling → `chore(scope): …`
+   - Tests bundle with their feature/fix commit; standalone only if no shippable feature in this batch.
+   - Foundation-first: refactors before features that depend on them. Generated files ride with their source chunk.
+
+3. **Present plan** — numbered list of proposed commits with files per chunk. **Wait for approval** ("ok", "go", or numbered amendments). Do not auto-execute.
+
+4. **Execute approved split** — for each chunk: `git add <files>` → `git commit -m "<message>"` via HEREDOC for multi-line. Print hash + summary. Final `git status` confirms clean tree.
+
+5. **Stop after commits** — no push, no tag, no branch switch. Those need separate user permission.
+
+**Forbidden:**
+- Emoji in subject line.
+- `Co-Authored-By: 🤖 ...` or AI-attribution footers.
+- `--no-verify` unless user explicitly asks.
+- Squashing or amending already-pushed commits.

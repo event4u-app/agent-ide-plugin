@@ -1,0 +1,75 @@
+---
+description: When the user wants to commit changes — types "/commit", "commit my changes", "save this to git", or after completing a logical unit of work and asking what's next. Splits dirty working tree into logical commits following Conventional Commits.
+globs: []
+alwaysApply: false
+---
+
+# /commit — split-and-confirm flow
+
+> Compiled from `@event4u/agent-config/.agent-src/commands/commit.md` for Phase 3 Cursor-export interview prototype.
+
+## When this fires
+
+User intent: "commit my changes", "save this", "create commits for these changes", explicit `/commit`. **NEVER** fires from your own initiative — commit is the user's call (per `commit-policy` rule in `.cursorrules`).
+
+## Steps
+
+### 1. Detect uncommitted changes
+
+Run `git status --porcelain` + `git diff --stat`. If clean working tree → tell user "nothing to commit" and stop.
+
+### 2. Split into logical chunks
+
+Group staged + unstaged hunks by **concern**, not by file:
+- New feature additions → `feat(scope): …`
+- Bug fixes → `fix(scope): …`
+- Refactors → `refactor(scope): …`
+- Docs / comments → `docs(scope): …`
+- Config / tooling → `chore(scope): …`
+- Tests added — bundle with their feature/fix commit; standalone test commits only if no shippable feature/fix in this batch.
+
+**Foundation-first ordering.** Refactors before features that depend on them. Generated files ride with their source chunk.
+
+### 3. Present plan, wait for approval
+
+Show one numbered list:
+```
+Vorschlag — split in 3 commits:
+1. refactor(auth): extract TokenService — auth/TokenService.php, auth/Tests/TokenServiceTest.php
+2. feat(auth): plug TokenService into LoginController — auth/Http/Controllers/LoginController.php
+3. chore(ci): bump pest to 2.34 — composer.json, composer.lock
+```
+
+Wait for "ok" / "go" / "1, 2, ja but skip 3" / numbered amendments. **Do not auto-execute.**
+
+### 4. Execute the approved split
+
+For each approved chunk:
+- `git add <files-for-this-chunk>`
+- `git commit -m "<conventional message>"` via HEREDOC (preserves multi-line bodies)
+- Print the resulting commit hash + short summary
+
+After all chunks: `git status` to confirm clean tree.
+
+### 5. Never push, never tag, never branch
+
+`/commit` only commits. Pushing / opening PR / tagging / switching branch needs separate user permission per `scope-control` rule.
+
+## Conventional Commit format
+
+```
+<type>(<scope>): <subject line, ≤72 chars, imperative, no trailing period>
+
+<optional body — wrap at 72, blank line before>
+
+<optional footer — BREAKING CHANGE: …, Closes #123>
+```
+
+Types: `feat` `fix` `chore` `docs` `refactor` `test` `perf` `style` `ci` `build` `revert`.
+
+## Forbidden
+
+- Emoji in subject line (`feat: 🚀 ship the X` — no).
+- Co-Authored-By footers (`🤖 Generated with …` — no).
+- Skipping hooks (`--no-verify`) unless user explicitly asks.
+- Squashing or amending already-pushed commits.

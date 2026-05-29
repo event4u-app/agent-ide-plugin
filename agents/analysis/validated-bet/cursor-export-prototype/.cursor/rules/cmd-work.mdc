@@ -1,0 +1,67 @@
+---
+description: When the user wants to implement a ticket or feature end-to-end — types "/work PROJ-123", "implement this ticket", "arbeite den Stack ab", "do this end-to-end". Orchestrates refine → plan → implement → verify.
+globs: []
+alwaysApply: false
+---
+
+# /work — implement-ticket end-to-end
+
+> Compiled from `@event4u/agent-config/.agent-src/commands/work.md` for Phase 3 Cursor-export interview prototype.
+
+## When this fires
+
+User intent: "/work PROJ-123", "implement PROJ-456 end-to-end", "arbeite das durch", "ship this ticket".
+
+## Phases
+
+### Phase 1 — Refine
+
+If the ticket reference is a Jira/Linear key:
+- Fetch ticket via API (or ask user to paste content if API unavailable).
+- Check acceptance criteria for ambiguity. If vague → run sub-procedure equivalent to `/refine-ticket` (see `cmd-refine-ticket.mdc`) and STOP for user sign-off before continuing.
+
+If user pasted free-form text: extract goal + acceptance criteria + constraints. Surface any ambiguity as ONE numbered-options question (per `ask-when-uncertain`).
+
+### Phase 2 — Plan
+
+Produce a **minimum-safe-diff plan** before touching code:
+- Files that must change.
+- Why each one — one sentence linking to the AC.
+- Test plan: what assertion proves the change works.
+- Risk surface: what neighboring code could break.
+
+Present the plan as numbered steps. **Wait for user "go"** unless the user has already given an autonomous mandate ("work this end-to-end without confirmations").
+
+### Phase 3 — Implement
+
+For each planned step:
+- Make the smallest change that achieves the step.
+- Update **all downstream changes** (callers, tests, imports, types) in the same edit — per `downstream-changes` Iron Law.
+- Run the verification command for the change (test runner, type-checker, linter — project-appropriate).
+- Flip a progress line if the user wants visible progress.
+
+### Phase 4 — Verify
+
+Final evidence gate per `verify-before-complete`:
+- Full project test suite (or scoped to changed files if suite is slow).
+- Type-checker.
+- Lint.
+- Any project-specific quality gate.
+
+**Show the actual output**, not a summary. No "looks good, tests probably pass."
+
+### Phase 5 — Report
+
+One closing summary:
+- What changed (files, lines).
+- Evidence captured (test names + green/red).
+- What's NOT done that the AC originally asked for, with reason.
+
+**Never auto-commit.** The user invokes `/commit` separately if they want commits.
+
+## Forbidden
+
+- Skipping Phase 2 (plan) to save time.
+- Marking a step done without fresh verification evidence in the same reply.
+- Touching files outside the planned scope without re-running Phase 2.
+- "Refactor while I'm in here" — per `minimal-safe-diff`.

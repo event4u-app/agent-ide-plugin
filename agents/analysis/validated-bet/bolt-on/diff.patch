@@ -1,0 +1,41 @@
+diff --git a/core/config/load.ts b/core/config/load.ts
+index e4c7e13..b614f28 100644
+--- a/core/config/load.ts
++++ b/core/config/load.ts
+@@ -35,6 +35,7 @@ import {
+ import { getLegacyBuiltInSlashCommandFromDescription } from "../commands/slash/built-in-legacy";
+ import { convertCustomCommandToSlashCommand } from "../commands/slash/customSlashCommand";
+ import { slashCommandFromPromptFile } from "../commands/slash/promptFileSlashCommand";
++import { loadAgentConfigSlashCommands } from "../commands/slash/agentConfigSlashCommand";
+ import { MCPManagerSingleton } from "../context/mcp/MCPManagerSingleton";
+ import { useHub } from "../control-plane/env";
+ import { BaseLLM } from "../llm";
+@@ -199,6 +200,14 @@ async function serializedToIntermediateConfig(
+     }
+   }
+ 
++  // BOLT-ON (Phase 2 of road-to-validated-bet.md, 2026-05-29) — surface 5
++  // hand-picked agent-config artefacts as slash commands. Returns [] silently
++  // if AGENT_CONFIG_ROOT does not exist, so this is safe for non-event4u
++  // Continue installs. Production version would wire path via config.
++  for (const slashCommand of loadAgentConfigSlashCommands()) {
++    slashCommands.push(slashCommand);
++  }
++
+   const config: Config = {
+     ...initial,
+     slashCommands,
+diff --git a/core/index.d.ts b/core/index.d.ts
+index 6192666..af71a8f 100644
+--- a/core/index.d.ts
++++ b/core/index.d.ts
+@@ -982,7 +982,8 @@ export type SlashCommandSource =
+   | "mcp-prompt"
+   | "prompt-file-v1"
+   | "prompt-file-v2"
+-  | "invokable-rule";
++  | "invokable-rule"
++  | "agent-config";
+ 
+ export interface SlashCommandDescWithSource extends SlashCommandDescription {
+   isLegacy: boolean; // Maps to if slashcommand.run exists
