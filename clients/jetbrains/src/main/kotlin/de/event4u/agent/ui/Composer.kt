@@ -98,6 +98,7 @@ class Composer(
             enabled = false,
             onClick = callbacks::onStop,
         )
+
     // paperclip ships disabled until the file picker is wired (Phase 4 host pass).
     private val paperclipButton =
         IconButton.create(
