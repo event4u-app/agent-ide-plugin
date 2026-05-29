@@ -15,10 +15,14 @@ import javax.swing.SwingUtilities
  * UI replaces this panel in Sprint 2 (ADR-003 / T-202).
  */
 class AgentToolWindowFactory : ToolWindowFactory {
-    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
-            border = JBUI.Borders.empty(PANEL_PADDING)
-        }
+    override fun createToolWindowContent(
+        project: Project,
+        toolWindow: ToolWindow,
+    ) {
+        val panel =
+            JBPanel<JBPanel<*>>(BorderLayout()).apply {
+                border = JBUI.Borders.empty(PANEL_PADDING)
+            }
         val status = JBLabel("Sidecar: starting…")
         panel.add(status, BorderLayout.NORTH)
 
@@ -30,16 +34,20 @@ class AgentToolWindowFactory : ToolWindowFactory {
         toolWindow.contentManager.addContent(content)
     }
 
-    private fun pingSidecarAsync(project: Project, onResult: (String) -> Unit) {
+    private fun pingSidecarAsync(
+        project: Project,
+        onResult: (String) -> Unit,
+    ) {
         Thread {
             val serverPath = resolveSidecarPath(project)
-            val line = runCatching {
-                val client = SidecarClient(serverPath)
-                client.start()
-                val healthy = client.healthy()
-                client.dispose()
-                if (healthy) "Sidecar healthy: pong" else "Sidecar unreachable"
-            }.getOrElse { "Sidecar error: ${it.message}" }
+            val line =
+                runCatching {
+                    val client = SidecarClient(serverPath)
+                    client.start()
+                    val healthy = client.healthy()
+                    client.dispose()
+                    if (healthy) "Sidecar healthy: pong" else "Sidecar unreachable"
+                }.getOrElse { "Sidecar error: ${it.message}" }
             onResult(line)
         }.apply {
             isDaemon = true

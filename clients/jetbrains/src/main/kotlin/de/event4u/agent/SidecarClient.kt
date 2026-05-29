@@ -1,6 +1,10 @@
 package de.event4u.agent
 
 import de.event4u.agent.protocol.Envelope
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
@@ -9,10 +13,6 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.TimeUnit
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 
 /**
  * Spawns the Node Agent Core sidecar and exposes request/response calls over
@@ -36,41 +36,48 @@ class SidecarClient(
 
     fun start() {
         if (process != null) return
-        val proc = ProcessBuilder(nodePath, serverPath)
-            .redirectErrorStream(false)
-            .start()
+        val proc =
+            ProcessBuilder(nodePath, serverPath)
+                .redirectErrorStream(false)
+                .start()
         process = proc
         writer = BufferedWriter(OutputStreamWriter(proc.outputStream, Charsets.UTF_8))
 
-        readerThread = Thread {
-            val reader = BufferedReader(InputStreamReader(proc.inputStream, Charsets.UTF_8))
-            reader.useLines { lines ->
-                lines.forEach { line ->
-                    if (line.isBlank()) return@forEach
-                    runCatching { json.decodeFromString(Envelope.serializer(), line) }
-                        .getOrNull()
-                        ?.let { env -> pending.remove(env.messageId)?.put(env) }
+        readerThread =
+            Thread {
+                val reader = BufferedReader(InputStreamReader(proc.inputStream, Charsets.UTF_8))
+                reader.useLines { lines ->
+                    lines.forEach { line ->
+                        if (line.isBlank()) return@forEach
+                        runCatching { json.decodeFromString(Envelope.serializer(), line) }
+                            .getOrNull()
+                            ?.let { env -> pending.remove(env.messageId)?.put(env) }
+                    }
                 }
+            }.apply {
+                isDaemon = true
+                start()
             }
-        }.apply {
-            isDaemon = true
-            start()
-        }
     }
 
     /** Send a request and block up to [timeoutMs] for the correlated reply. */
-    fun request(messageType: String, data: JsonObject, timeoutMs: Long = 5000): Envelope? {
+    fun request(
+        messageType: String,
+        data: JsonObject,
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+    ): Envelope? {
         val w = writer ?: error("sidecar not started")
         val messageId = UUID.randomUUID().toString()
         val queue = SynchronousQueue<Envelope>()
         pending[messageId] = queue
 
-        val envelope = buildJsonObject {
-            put("messageId", JsonPrimitive(messageId))
-            put("messageType", JsonPrimitive(messageType))
-            put("data", data)
-            put("done", JsonPrimitive(true))
-        }
+        val envelope =
+            buildJsonObject {
+                put("messageId", JsonPrimitive(messageId))
+                put("messageType", JsonPrimitive(messageType))
+                put("data", data)
+                put("done", JsonPrimitive(true))
+            }
         synchronized(w) {
             w.write(json.encodeToString(JsonObject.serializer(), envelope))
             w.write("\n")
@@ -91,5 +98,9 @@ class SidecarClient(
         process = null
         writer = null
         pending.clear()
+    }
+
+    private companion object {
+        const val DEFAULT_TIMEOUT_MS = 5000L
     }
 }
