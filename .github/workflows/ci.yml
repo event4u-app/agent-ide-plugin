@@ -35,8 +35,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
       - run: pnpm run format
-      - run: pnpm run typecheck
+      # build before typecheck: workspace .d.ts must exist for cross-package
+      # type resolution (tsc -p does not build project references).
       - run: pnpm run build
+      - run: pnpm run typecheck
       - run: pnpm run test
 
   jetbrains:

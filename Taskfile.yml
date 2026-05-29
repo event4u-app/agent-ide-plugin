@@ -42,11 +42,12 @@ tasks:
       - pnpm exec tsx scripts/codegen.ts
 
   ci:
-    desc: Full local gate — lint, typecheck, build, test
+    desc: Full local gate — lint, format, build, typecheck, test
     cmds:
       - task: lint
-      - task: typecheck
+      - task: format
       - task: build
+      - task: typecheck
       - task: test
 
   # --- JetBrains client (requires JDK 17 + Gradle wrapper; not runnable without a JVM) ---
