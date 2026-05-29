@@ -88,10 +88,7 @@ export function toToolResultPart(
   output: unknown,
   isError = false,
 ): ContentPart {
-  const content =
-    typeof output === 'string'
-      ? output
-      : JSON.stringify(output, null, 2);
+  const content = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
   return {
     type: 'tool_result',
     tool_use_id: call.id,

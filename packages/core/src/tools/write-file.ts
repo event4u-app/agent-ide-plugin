@@ -123,10 +123,7 @@ export function unifiedDiff(oldText: string, newText: string, label = 'file'): s
   }
   const oldCount = oldLines.length === 0 ? '0,0' : `1,${oldLines.length}`;
   const newCount = newLines.length === 0 ? '0,0' : `1,${newLines.length}`;
-  return [
-    `--- a/${label}`,
-    `+++ b/${label}`,
-    `@@ -${oldCount} +${newCount} @@`,
-    ...hunk,
-  ].join('\n');
+  return [`--- a/${label}`, `+++ b/${label}`, `@@ -${oldCount} +${newCount} @@`, ...hunk].join(
+    '\n',
+  );
 }

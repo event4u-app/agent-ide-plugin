@@ -87,11 +87,7 @@ describe('toToolResultPart', () => {
   });
 
   it('flags errors via is_error', () => {
-    const part = toToolResultPart(
-      { id: 't', name: 'x', input: {} },
-      'permission denied',
-      true,
-    );
+    const part = toToolResultPart({ id: 't', name: 'x', input: {} }, 'permission denied', true);
     expect(part).toMatchObject({ is_error: true, content: 'permission denied' });
   });
 });

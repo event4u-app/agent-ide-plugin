@@ -95,7 +95,14 @@ export const LlmStreamEventSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('thinking_delta'), text: z.string() }),
   z.object({
     kind: z.literal('stop'),
-    reason: z.enum(['end_turn', 'max_tokens', 'tool_use', 'stop_sequence', 'pause_turn', 'refusal']),
+    reason: z.enum([
+      'end_turn',
+      'max_tokens',
+      'tool_use',
+      'stop_sequence',
+      'pause_turn',
+      'refusal',
+    ]),
     usage: LlmUsageSchema,
   }),
   z.object({
@@ -109,3 +116,61 @@ export type LlmStreamEvent = z.infer<typeof LlmStreamEventSchema>;
 /** Identifies which transport ran the call — backend, CLI, etc. */
 export const LlmModeSchema = z.enum(['api', 'cli']);
 export type LlmMode = z.infer<typeof LlmModeSchema>;
+
+// --- T-305: halt protocol ----------------------------------------------
+
+/**
+ * Halt envelope emitted by the agent when it needs user input. The chat UI
+ * renders a card with the question + option buttons + a free-text fallback.
+ * Single-select only in MVP; multi-select and form-variant are v1.0 Sprint 7.
+ */
+export const HaltOptionSchema = z.object({
+  /** Stable id forwarded back in the answer. */
+  id: z.string().min(1),
+  /** Label rendered as the button. */
+  label: z.string().min(1),
+  /** Optional detail line under the button. */
+  description: z.string().optional(),
+});
+export type HaltOption = z.infer<typeof HaltOptionSchema>;
+
+export const HaltRequestSchema = z.object({
+  /** Halt id; the answer references this. */
+  id: z.string().min(1),
+  question: z.string().min(1),
+  options: z.array(HaltOptionSchema).default([]),
+  /** When true, the user MAY type free text instead of picking an option. */
+  allow_free_text: z.boolean().default(true),
+});
+export type HaltRequest = z.infer<typeof HaltRequestSchema>;
+
+export const HaltAnswerSchema = z.object({
+  halt_id: z.string().min(1),
+  /** Picked option id, OR omitted when the user typed free text. */
+  option_id: z.string().optional(),
+  /** Free-text answer; takes precedence over option_id when present. */
+  text: z.string().optional(),
+});
+export type HaltAnswer = z.infer<typeof HaltAnswerSchema>;
+
+// --- T-306: ask-about-selection editor action ---------------------------
+
+export const SelectionContextSchema = z.object({
+  /** Workspace-relative file path. */
+  path: z.string(),
+  /** Selected text from the editor. */
+  text: z.string(),
+  /** 1-based inclusive line range of the selection. */
+  start_line: z.number().int().positive(),
+  end_line: z.number().int().positive(),
+  /** Optional language hint, e.g. `"typescript"`. */
+  language: z.string().optional(),
+});
+export type SelectionContext = z.infer<typeof SelectionContextSchema>;
+
+export const AskAboutSelectionSchema = z.object({
+  selection: SelectionContextSchema,
+  /** Optional user prompt typed in the editor's quick-input. */
+  prompt: z.string().optional(),
+});
+export type AskAboutSelection = z.infer<typeof AskAboutSelectionSchema>;

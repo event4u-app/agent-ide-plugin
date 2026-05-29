@@ -132,9 +132,7 @@ export function makeReadTools(opts: ReadToolsOptions): {
     async run(args) {
       const resolved = resolveInside(args.path);
       if (typeof resolved !== 'string') return resolved.error;
-      const entries = await readdir(resolved, { withFileTypes: true }).catch(
-        () => undefined,
-      );
+      const entries = await readdir(resolved, { withFileTypes: true }).catch(() => undefined);
       if (!entries) return `directory not found: ${args.path}`;
       const lines = entries
         .slice(0, MAX_LIST_ENTRIES)
@@ -187,8 +185,7 @@ export function makeReadTools(opts: ReadToolsOptions): {
     args: GrepArgsSchema,
     definition: {
       name: 'grep',
-      description:
-        'Search workspace files for a regex pattern. Returns "path:line:content" lines.',
+      description: 'Search workspace files for a regex pattern. Returns "path:line:content" lines.',
       input_schema: {
         type: 'object',
         properties: {

@@ -105,7 +105,9 @@ export class PermissionGate {
   }
 
   /** First-pass check. Returns `'allow'` to proceed, otherwise a level marker. */
-  async evaluate(request: PermissionRequest): Promise<
+  async evaluate(
+    request: PermissionRequest,
+  ): Promise<
     | { result: 'allow'; reason: 'low' | 'always_granted' }
     | { result: 'block'; reason: 'hard_floor'; matched: string }
     | { result: 'ask'; level: 'requires_diff_approval' | 'requires_approval' }
@@ -123,7 +125,9 @@ export class PermissionGate {
     if (cls.level === 'low') return { result: 'allow', reason: 'low' };
     await this.load();
     const scope = scopeOf(request);
-    const granted = this.file.always.find((r) => r.tool === request.tool && (!r.scope || r.scope === scope));
+    const granted = this.file.always.find(
+      (r) => r.tool === request.tool && (!r.scope || r.scope === scope),
+    );
     if (granted) return { result: 'allow', reason: 'always_granted' };
     return { result: 'ask', level: cls.level };
   }

@@ -68,7 +68,13 @@ export interface CountTokensParams {
 export type RawAnthropicEvent =
   | {
       type: 'message_start';
-      message: { usage: { input_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } };
+      message: {
+        usage: {
+          input_tokens: number;
+          cache_creation_input_tokens?: number;
+          cache_read_input_tokens?: number;
+        };
+      };
     }
   | {
       type: 'content_block_start';
@@ -93,7 +99,14 @@ export type RawAnthropicEvent =
   | {
       type: 'message_delta';
       delta: {
-        stop_reason: 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' | 'pause_turn' | 'refusal' | null;
+        stop_reason:
+          | 'end_turn'
+          | 'max_tokens'
+          | 'tool_use'
+          | 'stop_sequence'
+          | 'pause_turn'
+          | 'refusal'
+          | null;
       };
       usage: { output_tokens: number };
     }
@@ -115,7 +128,11 @@ export class AnthropicApiBackend implements LlmBackend {
       this.client = {
         messages: {
           create: (params) =>
-            Promise.resolve(realClient.messages.stream(params as Parameters<typeof realClient.messages.stream>[0]) as unknown as AsyncIterable<RawAnthropicEvent>),
+            Promise.resolve(
+              realClient.messages.stream(
+                params as Parameters<typeof realClient.messages.stream>[0],
+              ) as unknown as AsyncIterable<RawAnthropicEvent>,
+            ),
           countTokens: realClient.messages.countTokens
             ? (params) =>
                 realClient.messages
@@ -142,7 +159,13 @@ export class AnthropicApiBackend implements LlmBackend {
     }
 
     const usage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
-    let stopReason: 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' | 'pause_turn' | 'refusal' = 'end_turn';
+    let stopReason:
+      | 'end_turn'
+      | 'max_tokens'
+      | 'tool_use'
+      | 'stop_sequence'
+      | 'pause_turn'
+      | 'refusal' = 'end_turn';
     const activeToolBlocks = new Map<number, { id: string; name: string }>();
 
     try {
@@ -256,14 +279,13 @@ export class AnthropicApiBackend implements LlmBackend {
   }
 
   private buildParams(request: LlmRequest): MessageCreateParams {
-    const messages = request.messages
-      .filter((m) => m.role !== 'system')
-      .map(toAnthropicMessage);
+    const messages = request.messages.filter((m) => m.role !== 'system').map(toAnthropicMessage);
     const systemFromMessages = request.messages
       .filter((m) => m.role === 'system')
       .map((m) => (typeof m.content === 'string' ? m.content : flattenTextParts(m.content)))
       .join('\n\n');
-    const system = request.system ?? (systemFromMessages.length > 0 ? systemFromMessages : undefined);
+    const system =
+      request.system ?? (systemFromMessages.length > 0 ? systemFromMessages : undefined);
 
     const params: MessageCreateParams = {
       model: request.model,

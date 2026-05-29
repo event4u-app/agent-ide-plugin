@@ -88,7 +88,11 @@ describe('AnthropicApiBackend.stream', () => {
       {
         type: 'message_start',
         message: {
-          usage: { input_tokens: 100, cache_creation_input_tokens: 80, cache_read_input_tokens: 20 },
+          usage: {
+            input_tokens: 100,
+            cache_creation_input_tokens: 80,
+            cache_read_input_tokens: 20,
+          },
         },
       },
       { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 5 } },
