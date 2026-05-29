@@ -22,6 +22,27 @@
       {
         "command": "event4u.openChat",
         "title": "event4u Agent: Open Chat"
+      },
+      {
+        "command": "event4u.askAboutSelection",
+        "title": "event4u Agent: Ask about Selection"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "event4u.askAboutSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@99"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "event4u.askAboutSelection",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorHasSelection"
       }
     ],
     "configuration": {
@@ -37,14 +58,29 @@
         },
         "event4u.defaultModel": {
           "type": "string",
+          "enum": [
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5"
+          ],
           "default": "claude-sonnet-4-6",
           "description": "Default model id."
+        },
+        "event4u.defaultMode": {
+          "type": "string",
+          "enum": [
+            "api",
+            "cli",
+            "auto"
+          ],
+          "default": "auto",
+          "description": "Default backend mode. 'auto' picks CLI when claude is on PATH, else API."
         }
       }
     }
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=out/extension.js",
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=out/extension.js && esbuild src/webview/chat-app.ts --bundle --platform=browser --format=iife --target=es2020 --outfile=out/webview.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
