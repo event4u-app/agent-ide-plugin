@@ -1,0 +1,10 @@
+dist/
+out/
+build/
+node_modules/
+coverage/
+pnpm-lock.yaml
+clients/jetbrains/
+agents/
+docs/
+*.md

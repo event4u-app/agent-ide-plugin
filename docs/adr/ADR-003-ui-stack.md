@@ -15,6 +15,8 @@ source_spikes: 0.3a (JBCef), 0.3b (JSON-RPC), 0.3c (CLI-pipe), 0.3d (PTY-bridge)
 
 **Proposed** — drafted from Phase 3 spike outcomes (research-grade pre-verdicts; runtime spikes 0.3a/b/d not yet executed). Awaits user sign-off + Phase 3 runtime confirmation before flip to **Accepted**.
 
+> **Phase-1 implementation note (2026-05-29).** MVP Sprint-1 (`road-to-mvp.md` T-101–T-107) was implemented against this Proposed decision: single Node sidecar + NDJSON `{ messageId, messageType, data, done }` over stdio for both IDEs; VS Code `WebviewViewProvider`; JetBrains tool window with a **Swing placeholder** (JBCef chat UI deferred to Sprint 2 / T-202). The AI Council (gemini + codex/gpt-5, 2026-05-29) reconfirmed NDJSON over `vscode-jsonrpc` for the **request/response** layer too (not only streaming), with the caveat to keep the envelope JSON-RPC-shaped for a future migration. Status stays **Proposed** — sign-off + runtime spikes 0.3a/0.3b remain the gate to **Accepted**.
+
 ## Context
 
 The plugin needs a UI surface in two IDEs. Each has different APIs:

@@ -1,0 +1,77 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
+  install:
+    desc: Install all workspace dependencies
+    cmds:
+      - pnpm install
+
+  build:
+    desc: Build all TypeScript packages + the VS Code extension
+    cmds:
+      - pnpm run build
+
+  test:
+    desc: Run unit tests across all packages
+    cmds:
+      - pnpm run test
+
+  lint:
+    desc: ESLint over the TypeScript sources
+    cmds:
+      - pnpm run lint
+
+  typecheck:
+    desc: Type-check all packages without emitting
+    cmds:
+      - pnpm run typecheck
+
+  format:
+    desc: Check formatting with Prettier
+    cmds:
+      - pnpm run format
+
+  codegen:
+    desc: Generate Kotlin DTOs from the Zod protocol schemas
+    cmds:
+      - pnpm exec tsx scripts/codegen.ts
+
+  ci:
+    desc: Full local gate — lint, format, build, typecheck, test
+    cmds:
+      - task: lint
+      - task: format
+      - task: build
+      - task: typecheck
+      - task: test
+
+  # --- JetBrains client (requires JDK 17 + Gradle wrapper; not runnable without a JVM) ---
+  jetbrains:check:
+    desc: Run the JetBrains plugin checks (requires JDK 17)
+    dir: clients/jetbrains
+    cmds:
+      - ./gradlew check
+
+  jetbrains:runIde:
+    desc: Launch a sandbox IDE with the plugin installed (requires JDK 17)
+    dir: clients/jetbrains
+    cmds:
+      - ./gradlew runIde
+
+  # --- VS Code client ---
+  vscode:build:
+    desc: Bundle the VS Code extension
+    dir: clients/vscode
+    cmds:
+      - pnpm run build
+
+  vscode:run:
+    desc: Open VS Code with the extension loaded (requires the `code` CLI)
+    dir: clients/vscode
+    cmds:
+      - code --extensionDevelopmentPath="$(pwd)"
