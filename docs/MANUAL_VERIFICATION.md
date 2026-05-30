@@ -102,6 +102,60 @@ The VS Code half of T-104 and T-105 (extension activates, ping fires) is current
 
 When the chat surface lands (Phase 2), add a parallel `## T-203 — VS Code chat UI` section here.
 
+## T-MR01 — Multi-root discovery contract (spike findings)
+
+> Time-boxed spike that froze the `WorkspaceRoot` schema for `T-MR02`. The
+> client-enumeration realities below are what each IDE can actually surface; the
+> runtime confirmation (open a real multi-folder window in each IDE) is deferred
+> to the `T-MR09` / `T-MR10` smoke rows added later in this file.
+
+### What each client can surface
+
+- **VS Code.** `vscode.workspace.workspaceFolders` is the source of truth: a
+  `.code-workspace` file yields one entry per folder; a single-folder window
+  yields one entry; a no-folder window yields `undefined` (degrade to "no
+  roots"). Folders carry a user-renamable `name` and a `uri` that may be
+  `file://`, `vscode-remote://` (Remote-SSH / WSL / Dev Containers), or virtual.
+  `onDidChangeWorkspaceFolders` fires on add / remove / reorder. `stableId` =
+  `workspaceFolder.uri.toString()` (stable across casing / relocation).
+- **JetBrains.** The **active** `Project`'s module content roots
+  (`ModuleManager` → `ModuleRootManager.getContentRoots()`) are the roots.
+  Excluded folders are dropped; SDK / library roots are **not** content roots
+  and never appear. `ProjectManager.getOpenProjects()` is **wrong** — it leaks
+  roots across separate IDE windows. A `ModuleRootListener` pushes change
+  deltas. `stableId` = the content-root `VirtualFile` URL.
+
+### Frozen `WorkspaceRoot` schema (input to T-MR02)
+
+```ts
+WorkspaceRoot = {
+  uri: string;          // primary identity the client speaks (file://, vscode-remote://, …)
+  stableId: string;     // client-supplied persistence key (survives path-casing / relocation)
+  canonicalKey: string; // realpath-derived dedup key — CORE-DERIVED, not client-supplied (see below)
+  displayName: string;
+  kind: string;         // 'folder' | 'module' | …
+  enabled: boolean;
+}
+```
+
+### Council contract corrections (codex/gpt-5 + gemini-2.5-pro, 2026-05-30)
+
+Both members independently flagged two defects in the first-draft contract:
+
+1. **`canonicalKey` must be platform/filesystem-aware, not blanket
+   case-normalized.** Lower-casing on a case-sensitive Linux volume would
+   wrongly dedup `/repo/Web` and `/repo/web`. Rule adopted: lower-case on
+   Windows + case-insensitive macOS volumes; **preserve case on Linux**.
+2. **`canonicalKey` is derived inside the Core (`RootRegistry`), never supplied
+   by the client.** A client-computed key drifts across WSL/host or differing
+   `realpath` implementations. The client supplies `uri` + `stableId`; the
+   registry computes `canonicalKey` via `fs.realpath.native` + the
+   platform-aware normalizer on `add`.
+
+Symlink-cycle safety: `fs.realpath` resolution terminates cycles (`ELOOP` →
+the root is flagged `enabled: false`); the walker additionally tracks visited
+real-dir keys so a symlinked subtree is not re-descended.
+
 ## Verification log
 
 > Append entries below. Newest at the top. One line per verification, signed by the human who walked the list.
