@@ -1,7 +1,7 @@
 import type Parser from 'web-tree-sitter';
 import { chunkTree, naiveChunker } from './chunk-tree.js';
 import type { LanguageRegistry } from './languages.js';
-import { Snippet } from './snippet.js';
+import type { Snippet } from './snippet.js';
 
 /**
  * T-602 — Symbol + chunk indexer. One tree-sitter parse yields two outputs:
