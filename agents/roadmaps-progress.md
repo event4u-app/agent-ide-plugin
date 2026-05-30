@@ -6,22 +6,22 @@
 
 ## Overall
 
-**115 / 346 steps done · 33%**
+**129 / 291 steps done · 44%**
 
 ```text
-█████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░   33%
+██████████████████░░░░░░░░░░░░░░░░░░░░░░   44%
 ```
 
 ## Open roadmaps
 
 | # | Roadmap | Phases | Steps | Open | Done | Deferred | Cancelled | Progress |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| 1 | [road-to-code-review.md](roadmaps/road-to-code-review.md) | 5 | 48 | 12 | 32 | 0 | 4 | ███████░░░ 67% |
-| 2 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 30 | 20 | 9 | 0 | 1 | ███░░░░░░░ 31% |
+| 1 | [road-to-code-review.md](roadmaps/road-to-code-review.md) | 5 | 48 | 0 | 32 | 12 | 4 | ██████████ 100% |
+| 2 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 30 | 0 | 12 | 16 | 2 | ██████████ 100% |
 | 3 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 7 | 67 | 48 | 18 | 0 | 1 | ███░░░░░░░ 27% |
 | 4 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 18 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 | 5 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 35 | 5 | 0 | ██████░░░░ 56% |
-| 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 101 | 21 | 0 | 0 | ██░░░░░░░░ 17% |
+| 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 69 | 32 | 21 | 0 | ███░░░░░░░ 32% |
 
 ---
 
@@ -29,25 +29,25 @@
 
 ### [road-to-code-review.md](roadmaps/road-to-code-review.md)
 
-**Code-Review capability — IDE-local review with self-consistency** — 32 / 48 done (67%)
+**Code-Review capability — IDE-local review with self-consistency** — 32 / 32 done (100%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
 | 1 | Diff ingestion + review data model (1 week) | ✅ done | 0 | 8 | 0 | 0 | 100% |
 | 2 | Staged review-prompt chain (1.5 weeks) | ✅ done | 0 | 9 | 0 | 1 | 100% |
 | 3 | Group-vote self-consistency filter (1 week) | ✅ done | 0 | 8 | 0 | 0 | 100% |
-| 4 | IDE surfacing: diagnostics + review action (1 week) | 🔄 in progress | 8 | 0 | 0 | 1 | 0% |
-| 5 | Config, workspace rules, polish (0.5–1 week) | 🔄 in progress | 4 | 7 | 0 | 2 | 54% |
+| 4 | IDE surfacing: diagnostics + review action (1 week) | ⏭️ skipped | 0 | 0 | 8 | 1 | 0% |
+| 5 | Config, workspace rules, polish (0.5–1 week) | ✅ done | 0 | 7 | 4 | 2 | 100% |
 
 ### [road-to-multi-project.md](roadmaps/road-to-multi-project.md)
 
-**Multi-Project / Multi-Root Workspace Support** — 9 / 30 done (31%)
+**Multi-Project / Multi-Root Workspace Support** — 12 / 12 done (100%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
 | A | Core: root contract + multi-root walker + scoped retrieval (≈ 2.5 weeks) | ✅ done | 0 | 9 | 0 | 1 | 100% |
-| B | Protocol + both clients: auto-detect & sync open projects (≈ 2 weeks) | ⬜ not started | 7 | 0 | 0 | 0 | 0% |
-| C | Chat UI: multiselect picker + scope persistence (≈ 2 weeks) | ⬜ not started | 13 | 0 | 0 | 0 | 0% |
+| B | Protocol + both clients: auto-detect & sync open projects (≈ 2 weeks) | ✅ done | 0 | 2 | 5 | 0 | 100% |
+| C | Chat UI: multiselect picker + scope persistence (≈ 2 weeks) | ✅ done | 0 | 1 | 11 | 1 | 100% |
 
 ### [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md)
 
@@ -89,17 +89,17 @@
 
 ### [road-to-v1-0.md](roadmaps/road-to-v1-0.md)
 
-**v1.0 — Internal alpha, dogfood it** — 21 / 122 done (17%)
+**v1.0 — Internal alpha, dogfood it** — 32 / 101 done (32%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
-| 5 | Catch-up: missing providers + capability manifests (2-3 weeks) | 🔄 in progress | 2 | 8 | 0 | 0 | 80% |
-| 6 | Context Engine v0: Tree-sitter + BM25 (3 weeks, moved up) | 🔄 in progress | 3 | 7 | 0 | 0 | 70% |
-| 7 | Multi-step agent loop + Multi-file edit + Action-card polish (3 weeks) | ⬜ not started | 14 | 0 | 0 | 0 | 0% |
-| 8 | Context Engine v1: Embeddings + hybrid retrieval (2-3 weeks, moved up) | 🔄 in progress | 3 | 6 | 0 | 0 | 67% |
+| 5 | Catch-up: missing providers + capability manifests (2-3 weeks) | ✅ done | 0 | 8 | 2 | 0 | 100% |
+| 6 | Context Engine v0: Tree-sitter + BM25 (3 weeks, moved up) | ✅ done | 0 | 7 | 3 | 0 | 100% |
+| 7 | Multi-step agent loop + Multi-file edit + Action-card polish (3 weeks) | ✅ done | 0 | 6 | 8 | 0 | 100% |
+| 8 | Context Engine v1: Embeddings + hybrid retrieval (2-3 weeks, moved up) | ✅ done | 0 | 6 | 3 | 0 | 100% |
 | 9 | Live PTY terminal + dual-surface sync (3 weeks, moved from S8) | ⬜ not started | 12 | 0 | 0 | 0 | 0% |
 | 10 | Native IDE depth (SweepAI-style) (3 weeks, moved from S9) | ⬜ not started | 11 | 0 | 0 | 0 | 0% |
-| 11 | MCP client + full agent-config coverage (3 weeks) | ⬜ not started | 10 | 0 | 0 | 0 | 0% |
+| 11 | MCP client + full agent-config coverage (3 weeks) | ✅ done | 0 | 5 | 5 | 0 | 100% |
 | 12 | Per-CLI gear panel + Unified Session Browser (2 weeks) | ⬜ not started | 9 | 0 | 0 | 0 | 0% |
 | 13 | UX polish + late-arriving items (3 weeks) | ⬜ not started | 11 | 0 | 0 | 0 | 0% |
 | 14 | Pricing Book signing + Telemetry + Docs (3 weeks) | ⬜ not started | 12 | 0 | 0 | 0 | 0% |
