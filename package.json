@@ -20,7 +20,7 @@
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "typecheck": "tsc -b packages/core && tsc -p clients/vscode/tsconfig.json --noEmit"
+    "typecheck": "tsc -b packages/core --emitDeclarationOnly && tsc -p clients/vscode/tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
