@@ -95,8 +95,10 @@ logger. Both are TypeScript-only and build to `dist/` for direct consumption.
 
 | File | Responsibility |
 |---|---|
-| `prices.yml` | T-206 v0: Anthropic models + Claude Pro / Max / Max-20x subscriptions |
+| `prices.yml` | T-206 v0: Anthropic models + Claude Pro / Max / Max-20x subscriptions; T-501/503/506 added OpenAI / Gemini / compat models |
 | `loader.ts` | T-206: Zod-validated `PricingBook` with model + subscription lookup and `costFor()` |
+| `verify.ts` | T-1401: Ed25519 detached-signature verify (`verifyPricingSignature`) + `priceDropGuard` (>50% drop) + `resolvePricing` fail-open orchestrator (ADR-007) |
+| `pricing-pubkey.pem` | T-1401: bundled signing public key (placeholder until the T-1402 release pipeline; private key never committed) |
 
 ### `packages/core/src/cli/`
 
@@ -144,10 +146,38 @@ MVP scope is IDE-side surface work that needs a running PhpStorm / VS Code:
 Manual smoke checklist for the JetBrains pieces lives in
 `docs/MANUAL_VERIFICATION.md`.
 
+## v1.0 core — shipped vs IDE-gated
+
+The MVP module map above is the v0 baseline. Since then the v1.0 engine phases
+landed as **pure-core** modules (framework-free, unit-tested) ahead of their
+IDE surfaces — the same core-first split documented per phase in
+`road-to-v1-0.md`. What is built in `packages/core/src/` today:
+
+| Area | Modules | Roadmap |
+|---|---|---|
+| Multi-provider LLM | `llm/openai-api.ts`, `llm/codex-cli.ts`, `llm/gemini-cli.ts`, `llm/openai-compat.ts`, `llm/cli/manifests/*` | Phase 5 (T-501..507) |
+| Context Engine | `context/walker.ts`, `chunk-tree.ts`, `indexer.ts`, `bm25.ts`, `embedder.ts`, `vector-store.ts`, `hybrid.ts`, `inject.ts`, `engine.ts` | Phase 6 + 8 |
+| Agent loop + edit | `agent/loop.ts`, `agent/edit-loop.ts`, `tools/locate.ts`, `tools/write-files.ts`, `tools/validate-edit.ts` | Phase 7 (T-701..702c) |
+| Cost UX | `cost/estimate.ts`, `cost/reconcile.ts`, `cost/shadow.ts` | Phase 7 + 14 (T-705/706/1404) |
+| MCP + memory + hooks | `mcp/*`, `memory/local.ts`, `memory/backend.ts`, `hooks/runner.ts` | Phase 11 (T-1101..1106) |
+| Session browser | `sessions/*` (5 lossy adapters + aggregator + provenance + watcher) | Phase 12 (T-1202..1206) |
+| Ship-readiness | `pricing/verify.ts`, `telemetry/engagement.ts`, `telemetry/report.ts` | Phase 14 (T-1401/1403) |
+
+Multi-root workspace support (`context/roots.ts`, `multi-root-walker.ts`) landed
+via `road-to-multi-project`. ADRs 005–007 record the load-bearing v1.0
+decisions.
+
+**Still IDE-runtime-gated** (need a running PhpStorm / VS Code; tracked `[~]` /
+`[ ]` on the roadmaps): every webview surface — chat cards, action-card badges,
+Cost Dashboard, the per-CLI gear panel, the Unified Session Browser overlay, the
+inline-edit prompt bar, live PTY terminal rendering, the telemetry opt-in toggle
++ export command, and the price-drop hard-block dialog. The core engines they
+render are done and unit-tested; only the surfacing remains.
+
 ## v1.0 deferrals
 
-Out of scope per the roadmap's "cut explicitly" list — see `road-to-v1-0.md`
-for the v1.0 expansion path: multi-step agent loop, multi-file edit, SweepAI
-inline edits, Context Engine (Tree-sitter + BM25 → embeddings), live PTY
-terminal, session browser, OpenAI / Codex / Gemini providers, Pricing-Book
-signing, telemetry.
+Still genuinely out of scope (not just unsurfaced) per the roadmap: the Sigstore
+signing **pipeline** (T-1402 — Ed25519 verify ships now, the signed feed +
+provenance is later), live PTY terminal backend (`node-pty` is native — blocked
+by the no-native-deps law), and the native IDE-depth shortcuts (Phase 10). See
+`road-to-v1-0.md` for the per-phase ledger.

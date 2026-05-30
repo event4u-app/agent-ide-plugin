@@ -10,6 +10,7 @@
 | [ADR-004](ADR-004-permission-model.md) | Permission Model — Threat Model, Hard-Floor Deny-List, Audit Trail | Proposed | 2026-05-28 | Phase 0 Phase 6 (council round 2 finding) |
 | [ADR-005](ADR-005-workspace-root-identity.md) | Workspace Root Identity — uri / stableId / canonicalKey + nested & symlink rules | Proposed | 2026-05-30 | road-to-multi-project Phase A (T-MR01..T-MR07) |
 | [ADR-006](ADR-006-mcp-client-and-memory-format.md) | MCP Client (hand-rolled, zero-dep) + Local Memory Format (md+frontmatter) | Proposed | 2026-05-30 | road-to-v1-0 Phase 11 (T-1101/02/04/05/06) |
+| [ADR-007](ADR-007-pricing-signature-and-telemetry.md) | Pricing-Book Signature (Ed25519 over Sigstore for v0) + Telemetry Privacy Floor | Proposed | 2026-05-31 | road-to-v1-0 Phase 14 (T-1401/1403/1404) |
 
 ## Status legend
 
