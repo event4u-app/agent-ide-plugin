@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SidecarClient } from './sidecar-client.js';
+import { mapWorkspaceFolders, mapWorkspaceFoldersChange } from './workspace-folders.js';
 import { buildChatHtml } from './webview/chat-html.js';
 import { formatStatusbar } from './webview/cost-format.js';
 import type { ChatModelSnapshot } from './webview/chat-model.js';
@@ -35,6 +36,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   status.command = 'event4u.openChat';
   status.show();
   context.subscriptions.push(status);
+
+  // T-MR09 — auto-enumerate the IDE window's open roots and keep the Core in
+  // sync, with no user action (handles .code-workspace multi-folder, the
+  // no-folder window, renames, order changes, duplicate basenames, and
+  // virtual / remote URIs — `uri.toString()` is the stable id in every case).
+  sidecar ??= new SidecarClient(serverPath);
+  try {
+    sidecar.start();
+  } catch {
+    // Sidecar may already be running.
+  }
+  void sidecar
+    .request('connect', {
+      workspaceFolders: mapWorkspaceFolders(vscode.workspace.workspaceFolders),
+    })
+    .catch(() => {
+      // Core may still be starting; folders re-sync on the next change event.
+    });
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders((event) => {
+      void sidecar
+        ?.request('workspaceFoldersChanged', mapWorkspaceFoldersChange(event))
+        .catch(() => {
+          // Best-effort; the Core reconciles from the next event or reconnect.
+        });
+    }),
+  );
 
   // T-203 — chat panel (Preact-free vanilla DOM webview).
   const openChat = vscode.commands.registerCommand('event4u.openChat', async () => {

@@ -25,12 +25,14 @@ function main(): void {
   process.stdin.on('data', (chunk: string) => parser.push(chunk));
   process.stdin.on('end', () => {
     log.info('stdin closed, exiting');
+    dispatcher.dispose();
     process.exit(0);
   });
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
       log.info(`received ${signal}, exiting`);
+      dispatcher.dispose();
       process.exit(0);
     });
   }

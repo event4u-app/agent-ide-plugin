@@ -15,7 +15,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 
-type Field = { name: string; kotlinType: string };
+// A field maps a Zod property to a Kotlin `data class` property. `kotlinType`
+// is emitted verbatim, so `List<T>` and nullable `T?` are expressed directly.
+// `default` (e.g. `null`, `emptyList()`) makes the property optional on the
+// wire — kotlinx.serialization fills it when the JSON omits the key.
+type Field = { name: string; kotlinType: string; default?: string };
 type DataClass = { name: string; fields: Field[]; doc?: string };
 
 const KOTLIN_PACKAGE = 'de.event4u.agent.protocol';
@@ -34,11 +38,70 @@ const classes: DataClass[] = [
   { name: 'PingResponse', fields: [{ name: 'result', kotlinType: 'String' }] },
   { name: 'EchoRequest', fields: [{ name: 'text', kotlinType: 'String' }] },
   { name: 'EchoResponse', fields: [{ name: 'text', kotlinType: 'String' }] },
+
+  // --- multi-project: workspace folders (road-to-multi-project Phase B) ---
+  {
+    name: 'WorkspaceFolder',
+    doc: 'A project root the IDE window currently has open.',
+    fields: [
+      { name: 'uri', kotlinType: 'String' },
+      { name: 'stableId', kotlinType: 'String' },
+      { name: 'displayName', kotlinType: 'String' },
+      { name: 'kind', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'RootIndexStatus',
+    doc: 'Per-root index status. `state` is one of indexing | ready | error.',
+    fields: [
+      { name: 'stableId', kotlinType: 'String' },
+      { name: 'state', kotlinType: 'String' },
+      { name: 'fileCount', kotlinType: 'Int' },
+      { name: 'totalFiles', kotlinType: 'Int?', default: 'null' },
+      { name: 'message', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'ConnectRequest',
+    doc: 'Connection handshake; reports every open root.',
+    fields: [
+      { name: 'workspaceFolders', kotlinType: 'List<WorkspaceFolder>', default: 'emptyList()' },
+    ],
+  },
+  {
+    name: 'ConnectResponse',
+    fields: [
+      { name: 'ack', kotlinType: 'Boolean' },
+      { name: 'roots', kotlinType: 'List<WorkspaceFolder>' },
+      { name: 'status', kotlinType: 'List<RootIndexStatus>' },
+    ],
+  },
+  {
+    name: 'WorkspaceFoldersChangedRequest',
+    doc: 'Delta of opened / closed roots.',
+    fields: [
+      { name: 'added', kotlinType: 'List<WorkspaceFolder>', default: 'emptyList()' },
+      { name: 'removed', kotlinType: 'List<String>', default: 'emptyList()' },
+    ],
+  },
+  {
+    name: 'WorkspaceFoldersChangedResponse',
+    fields: [
+      { name: 'ack', kotlinType: 'Boolean' },
+      { name: 'status', kotlinType: 'List<RootIndexStatus>' },
+    ],
+  },
+  {
+    name: 'RootStatusResponse',
+    fields: [{ name: 'status', kotlinType: 'List<RootIndexStatus>' }],
+  },
 ];
 
 function emitClass(dc: DataClass): string {
   const doc = dc.doc ? `/** ${dc.doc} */\n` : '';
-  const fields = dc.fields.map((f) => `    val ${f.name}: ${f.kotlinType},`).join('\n');
+  const fields = dc.fields
+    .map((f) => `    val ${f.name}: ${f.kotlinType}${f.default ? ` = ${f.default}` : ''},`)
+    .join('\n');
   return `${doc}@Serializable\ndata class ${dc.name}(\n${fields}\n)`;
 }
 

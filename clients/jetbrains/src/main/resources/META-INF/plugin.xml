@@ -25,6 +25,9 @@
             id="event4u-agent.settings"
             displayName="event4u Agent"/>
         <applicationService serviceImplementation="de.event4u.agent.settings.AgentSettings"/>
+        <!-- T-MR10 — multi-project: auto-detect open module content roots. -->
+        <projectService serviceImplementation="de.event4u.agent.workspace.WorkspaceFolderService"/>
+        <postStartupActivity implementation="de.event4u.agent.workspace.WorkspaceFolderStartup"/>
     </extensions>
 
     <actions>

@@ -1,4 +1,6 @@
 import {
+  type ConnectResponse,
+  ConnectRequestSchema,
   type Envelope,
   type EchoRequest,
   type EchoResponse,
@@ -6,7 +8,11 @@ import {
   type PingResponse,
   PingRequestSchema,
   MethodNameSchema,
+  type RootStatusResponse,
+  type WorkspaceFoldersChangedResponse,
+  WorkspaceFoldersChangedRequestSchema,
 } from '@event4u-agent/protocol';
+import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 
 /** A handler maps a validated request payload to a response payload. */
 type Handler = (data: unknown) => Promise<unknown> | unknown;
@@ -17,15 +23,39 @@ type Handler = (data: unknown) => Promise<unknown> | unknown;
  * Transport-agnostic on purpose: {@link dispatch} takes one inbound
  * {@link Envelope} and returns the response envelope. The stdio wiring lives
  * in `main.ts`; tests drive {@link dispatch} directly with no streams.
+ *
+ * Stateful workspace concerns (root registry, walk + index lifecycle, per-root
+ * status) live behind an injected {@link WorkspaceCoordinator} (T-MR11) so the
+ * dispatcher stays a thin routing layer.
  */
 export class Dispatcher {
-  private readonly handlers: Record<string, Handler> = {
-    ping: (): PingResponse => ({ result: 'pong' }),
-    echo: (data: unknown): EchoResponse => {
-      const req: EchoRequest = EchoRequestSchema.parse(data);
-      return { text: req.text };
-    },
-  };
+  private readonly handlers: Record<string, Handler>;
+
+  constructor(private readonly coordinator: WorkspaceCoordinator = new WorkspaceCoordinator()) {
+    this.handlers = {
+      ping: (): PingResponse => ({ result: 'pong' }),
+      echo: (data: unknown): EchoResponse => {
+        const req: EchoRequest = EchoRequestSchema.parse(data);
+        return { text: req.text };
+      },
+      connect: async (data: unknown): Promise<ConnectResponse> => {
+        const req = ConnectRequestSchema.parse(data ?? {});
+        const status = await this.coordinator.connect(req.workspaceFolders);
+        return { ack: true, roots: this.coordinator.roots(), status };
+      },
+      workspaceFoldersChanged: async (data: unknown): Promise<WorkspaceFoldersChangedResponse> => {
+        const req = WorkspaceFoldersChangedRequestSchema.parse(data ?? {});
+        const status = await this.coordinator.applyChange(req.added, req.removed);
+        return { ack: true, status };
+      },
+      rootStatus: (): RootStatusResponse => ({ status: this.coordinator.status() }),
+    };
+  }
+
+  /** Release the workspace coordinator's timers (shutdown). */
+  dispose(): void {
+    this.coordinator.dispose();
+  }
 
   async dispatch(envelope: Envelope): Promise<Envelope> {
     const methodResult = MethodNameSchema.safeParse(envelope.messageType);
