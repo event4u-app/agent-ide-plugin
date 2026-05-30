@@ -6,10 +6,10 @@
 
 ## Overall
 
-**100 / 346 steps done · 29%**
+**109 / 346 steps done · 31%**
 
 ```text
-████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░   29%
+█████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░   31%
 ```
 
 ## Open roadmaps
@@ -17,7 +17,7 @@
 | # | Roadmap | Phases | Steps | Open | Done | Deferred | Cancelled | Progress |
 |---|---|---:|---:|---:|---:|---:|---:|---|
 | 1 | [road-to-code-review.md](roadmaps/road-to-code-review.md) | 5 | 48 | 12 | 32 | 0 | 4 | ███████░░░ 67% |
-| 2 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 30 | 30 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
+| 2 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 30 | 20 | 9 | 0 | 1 | ███░░░░░░░ 31% |
 | 3 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 7 | 67 | 48 | 18 | 0 | 1 | ███░░░░░░░ 27% |
 | 4 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 18 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 | 5 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 35 | 5 | 0 | ██████░░░░ 56% |
@@ -41,11 +41,11 @@
 
 ### [road-to-multi-project.md](roadmaps/road-to-multi-project.md)
 
-**Multi-Project / Multi-Root Workspace Support** — 0 / 30 done (0%)
+**Multi-Project / Multi-Root Workspace Support** — 9 / 30 done (31%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
-| A | Core: root contract + multi-root walker + scoped retrieval (≈ 2.5 weeks) | ⬜ not started | 10 | 0 | 0 | 0 | 0% |
+| A | Core: root contract + multi-root walker + scoped retrieval (≈ 2.5 weeks) | ✅ done | 0 | 9 | 0 | 1 | 100% |
 | B | Protocol + both clients: auto-detect & sync open projects (≈ 2 weeks) | ⬜ not started | 7 | 0 | 0 | 0 | 0% |
 | C | Chat UI: multiselect picker + scope persistence (≈ 2 weeks) | ⬜ not started | 13 | 0 | 0 | 0 | 0% |
 
