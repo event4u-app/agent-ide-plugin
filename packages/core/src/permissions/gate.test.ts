@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PermissionGate } from './gate.js';
+import { normalizeArgsBlob, PermissionGate } from './gate.js';
 
 let dir: string;
 beforeEach(async () => {
@@ -54,6 +54,44 @@ describe('PermissionGate.evaluate — hard floor', () => {
       args: { cmd: 'git push --force origin main' },
     });
     expect(result.result).toBe('block');
+  });
+
+  // Obfuscation bypass classes — the tripwire normalizes args before matching
+  // (ADR-004 § boundary vs. tripwire). Not exhaustive, but trivial dodges fail.
+  it('blocks rm -rf / split with the $IFS word-splitting trick', async () => {
+    const result = await new PermissionGate().evaluate({
+      tool: 'run_command',
+      args: { cmd: 'rm${IFS}-rf${IFS}/${IFS}--no-preserve-root' },
+    });
+    expect(result.result).toBe('block');
+  });
+
+  it('blocks git push --force when quotes break up the flag', async () => {
+    const result = await new PermissionGate().evaluate({
+      tool: 'run_command',
+      args: { cmd: "git push --fo''rce origin main" },
+    });
+    expect(result.result).toBe('block');
+  });
+
+  it('blocks DROP TABLE when quotes break up the keyword', async () => {
+    const result = await new PermissionGate().evaluate({
+      tool: 'run_command',
+      args: { cmd: 'DR""OP TABLE users' },
+    });
+    expect(result.result).toBe('block');
+  });
+});
+
+describe('normalizeArgsBlob', () => {
+  it('expands $IFS, strips quotes, and collapses whitespace', () => {
+    expect(normalizeArgsBlob('rm${IFS}-rf${IFS}/')).toBe('rm -rf /');
+    expect(normalizeArgsBlob("git push --fo''rce")).toBe('git push --force');
+    expect(normalizeArgsBlob('a   b\t c')).toBe('a b c');
+  });
+
+  it('leaves a benign blob substantively unchanged', () => {
+    expect(normalizeArgsBlob('read_file {path:src/foo.ts}')).toBe('read_file {path:src/foo.ts}');
   });
 });
 

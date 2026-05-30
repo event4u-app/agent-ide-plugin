@@ -40,6 +40,13 @@ export interface ToolClassification {
  * Hard-floor regex patterns + per-tool classifications. Mirrors the ADR-004
  * model. Patterns match the tool's *args* (stringified for matching) and the
  * tool name itself.
+ *
+ * IMPORTANT: this deny-list is a convenience *tripwire*, NOT the security
+ * boundary. The boundary is the `requires_approval` default plus the human at
+ * the confirmation button (Layer 3). A command that slips past these patterns
+ * still has to be confirmed by a human. Do not "trust the list" — see
+ * `docs/adr/ADR-004-permission-model.md` § "What the deny-list is — and is not
+ * (boundary vs. tripwire)" for the known bypass classes.
  */
 const HARD_FLOOR_PATTERNS: RegExp[] = [
   /\brm\s+-rf\s+\/(?!\S)/, // rm -rf /
@@ -49,6 +56,28 @@ const HARD_FLOOR_PATTERNS: RegExp[] = [
   /\bgit\s+push\s+-{1,2}force(\b|-)/,
   /\bgit\s+reset\s+--hard\b/,
 ];
+
+/**
+ * Normalize a stringified args blob before hard-floor matching to raise the
+ * bar against trivial token-splitting obfuscation (ADR-004 § boundary vs.
+ * tripwire). Additive only — the raw blob is matched too, so this never
+ * weakens an existing match, it only catches a few more obvious dodges:
+ *
+ *   `rm${IFS}-rf${IFS}/`  → `rm -rf /`
+ *   `git push --fo''rce`   → `git push --force`
+ *
+ * Not exhaustive by design: alternate spellings, equivalent tools, and
+ * unlisted commands still fall through to the human-approval boundary.
+ */
+export function normalizeArgsBlob(blob: string): string {
+  return blob
+    .replace(/\\(["'`])/g, '$1') // unescape JSON-escaped quotes
+    .replace(/\$\{?IFS\}?/g, ' ') // $IFS / ${IFS} word-splitting trick → space
+    .replace(/['"`]/g, '') // drop quotes used to break up tokens
+    .replace(/\\\r?\n/g, ' ') // shell line-continuation → space
+    .replace(/\s+/g, ' ') // collapse runs of whitespace
+    .trim();
+}
 
 const DEFAULT_CLASSIFICATIONS: Record<string, ToolClassification> = {
   read_file: { level: 'low' },
@@ -113,8 +142,12 @@ export class PermissionGate {
     | { result: 'ask'; level: 'requires_diff_approval' | 'requires_approval' }
   > {
     const argsBlob = `${request.tool} ${JSON.stringify(request.args)}`;
+    const normalizedBlob = normalizeArgsBlob(argsBlob);
     for (const pattern of this.hardFloorPatterns) {
-      if (pattern.test(argsBlob)) {
+      // Match the raw blob (preserves every existing match) AND a normalized
+      // variant that defeats trivial token-splitting obfuscation. The regex
+      // set carries no `g` flag, so `.test` stays stateless across both calls.
+      if (pattern.test(argsBlob) || pattern.test(normalizedBlob)) {
         return { result: 'block', reason: 'hard_floor', matched: pattern.source };
       }
     }

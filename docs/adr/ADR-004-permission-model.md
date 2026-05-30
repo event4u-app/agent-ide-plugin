@@ -143,6 +143,37 @@ The kernel rule has six Hard-Floor triggers:
 
 ADR-004 narrows nothing from the kernel rule and adds layer-1 + layer-3 on top.
 
+### What the deny-list is — and is not (boundary vs. tripwire)
+
+The Layer 2 hard-floor regex set is a **convenience tripwire, not the
+security boundary.** A regex match over stringified tool arguments stops the
+obvious catastrophic command (`rm -rf /`, `DROP TABLE`, `git push --force`)
+before it ever reaches a human — but a deny-list over strings is bypassable
+in principle and must never be mistaken for the wall.
+
+**The actual boundary is Layer 3:** every non-`low` tool defaults to
+`requires_approval`, and a human confirms at the button. No regex result
+grants execution — it can only _deny early_. A command that slips past the
+patterns still lands on the confirmation dialog, where the human is the
+final gate.
+
+**Known bypass classes** — the tripwire does not claim to catch these:
+
+- **Obfuscation / token-splitting.** `rm -r''f /`, `rm${IFS}-rf${IFS}/`,
+  quoted or whitespace-padded variants. The implementation normalizes args
+  before matching (unescapes and strips quotes, expands `$IFS`, collapses
+  whitespace — `normalizeArgsBlob` in `packages/core/src/permissions/gate.ts`)
+  to raise this bar, but normalization is not exhaustive.
+- **Alternate spellings / equivalent tools.** `find . -delete` instead of
+  `rm`, `git update-ref -d`, a destructive one-liner inside `python -c`.
+- **Unlisted destructive commands.** Anything outside the deliberately small
+  MVP pattern set. The set grows by quarterly review (see Consequences §
+  Negative); it never reaches completeness.
+
+A contributor extending the gate must treat a new pattern as _raising the
+tripwire_, not _closing the boundary_ — the boundary is and stays the
+human-approval default.
+
 ## Audit trail
 
 Every permission decision (allow / deny / ask + user response) writes one line to `.event4u-agent/audit-<YYYY-MM-DD>.jsonl` in the project root.
