@@ -56,7 +56,7 @@ describe('Dispatcher — multi-project methods (T-MR11)', () => {
   }
 
   const wsFolder = (stableId: string) => ({
-    uri: `file:///tmp/${stableId}`,
+    uri: `/repo/${stableId}`,
     stableId,
     displayName: stableId,
     kind: 'folder',

@@ -42,7 +42,9 @@ function fakeWalkerFactory(filesByRoot: Record<string, string[]>) {
 }
 
 const folder = (stableId: string, name = stableId): WorkspaceFolder => ({
-  uri: `file:///tmp/proj-${stableId}`,
+  // Plain path (no file:// scheme) so uriToPath stays cross-platform — a
+  // Unix-style file URL throws ERR_INVALID_FILE_URL_PATH on Windows.
+  uri: `/repo/${stableId}`,
   stableId,
   displayName: name,
   kind: 'folder',
@@ -94,7 +96,7 @@ describe('WorkspaceCoordinator — connect handshake', () => {
     const { coord } = makeCoordinator({ A: ['src/a.ts'] });
     await coord.connect([folder('A', 'repo-a')]);
     expect(coord.roots()).toEqual([
-      { uri: 'file:///tmp/proj-A', stableId: 'A', displayName: 'repo-a', kind: 'folder' },
+      { uri: '/repo/A', stableId: 'A', displayName: 'repo-a', kind: 'folder' },
     ]);
   });
 });
