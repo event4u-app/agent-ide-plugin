@@ -39,6 +39,35 @@ const CommandSuggestionSchema = z
   .partial()
   .default({});
 
+/**
+ * T-1101 — one MCP server the plugin spawns and connects to. `id` namespaces
+ * the server's tools (`<id>:<tool>`) and so must not contain a colon. The
+ * command runs as a subprocess; env values are read from the YAML directly
+ * (secrets should be `${ENV_VAR}`-expanded by the consumer, not inlined).
+ */
+const McpServerSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .refine((v) => !v.includes(':'), { message: "must not contain ':'" }),
+  command: z.string().min(1),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string()).default({}),
+  enabled: z.boolean().default(true),
+  /** Override the 5s handshake timeout for a slow-booting server. */
+  init_timeout_ms: z.number().int().positive().optional(),
+  /** Override the 30s per-call timeout. */
+  request_timeout_ms: z.number().int().positive().optional(),
+});
+export type McpServerConfig = z.infer<typeof McpServerSchema>;
+
+const McpSchema = z
+  .object({
+    servers: z.array(McpServerSchema).default([]),
+  })
+  .partial()
+  .default({});
+
 const LlmSchema = z
   .object({
     default_provider: LlmProvider.default('anthropic'),
@@ -67,6 +96,7 @@ export const AgentSettingsSchema = z
     llm: LlmSchema,
     roles: RolesSchema,
     commands: CommandsSchema,
+    mcp: McpSchema,
   })
   .partial()
   .passthrough()
@@ -84,6 +114,9 @@ export const AgentSettingsSchema = z
         enabled: parsed.commands?.suggestion?.enabled ?? true,
         senior_gate: parsed.commands?.suggestion?.senior_gate ?? false,
       },
+    },
+    mcp: {
+      servers: parsed.mcp?.servers ?? [],
     },
   }));
 
