@@ -156,6 +156,50 @@ Symlink-cycle safety: `fs.realpath` resolution terminates cycles (`ELOOP` →
 the root is flagged `enabled: false`); the walker additionally tracks visited
 real-dir keys so a symlinked subtree is not re-descended.
 
+## Phase 8 — Embeddings + hybrid retrieval (real-model gate)
+
+> The plumbing (fusion, scoping, cache, ranking determinism) is unit-tested with
+> a deterministic `FakeEmbedder`. Retrieval **quality** and **perf** depend on a
+> real model + a real corpus, which the standard CI matrix does not run — verify
+> them here.
+
+### Prerequisites — enable the local embedder
+
+```bash
+pnpm add @huggingface/transformers   # optional, native (onnxruntime + sharp)
+```
+
+The package is intentionally kept out of the default dependency graph (same
+no-native-deps call as the token-tracking JSONL store). Without it, the engine
+runs BM25-only; `RemoteEmbedder` (Voyage/OpenAI, fetch-based) is the no-native
+alternative if a key is configured.
+
+### T-801/T-805 — embedder smoke + incremental re-embed
+
+```bash
+RUN_EMBEDDING_INTEGRATION=1 pnpm --filter @event4u-agent/core test
+# Expect: TransformersEmbedder (real model) suite passes — 384-dim, semantic ranking.
+```
+
+- [ ] Real model loads; semantically-related text scores higher than unrelated.
+- [ ] Edit ~50 lines in a 2000-line file → re-embed completes < 2s (content-hash
+      cache means only changed chunks miss). Record the timing.
+
+### T-803/T-804 — quality eval (exit gate)
+
+Follow `agents/analysis/retrieval-eval/README.md`: build `queries.json` from real
+chat history, index a target repo BM25-only vs hybrid, compare MRR / Recall@10.
+
+- [ ] 20 sample queries: hybrid retrieval is **not worse** than BM25-only and
+      improves the no-exact-symbol-match (semantic) queries.
+- [ ] First-time index of a ~20k-file repo completes < 8 min including embeddings.
+
+### Record the result
+
+```
+- 2026-MM-DD · Phase 8 verified by <name> · model <id> · re-embed <ms> · MRR BM25 <x> → hybrid <y>
+```
+
 ## Verification log
 
 > Append entries below. Newest at the top. One line per verification, signed by the human who walked the list.

@@ -1,7 +1,22 @@
 import { CodeRetriever, type SymbolMatch } from './bm25.js';
+import type { Embedder } from './embedder.js';
+import { EmbeddingCache } from './embedding-cache.js';
+import {
+  IdentityReranker,
+  SingleQueryExpander,
+  chunkRefKey,
+  rrfFuse,
+  symbolToChunk,
+  vectorHitToChunkRef,
+  type ChunkRef,
+  type QueryExpander,
+  type RankedItem,
+  type Reranker,
+} from './hybrid.js';
 import type { CodeIndexer } from './indexer.js';
 import { Snippet } from './snippet.js';
 import { tokenizeCode } from './tokenize.js';
+import { VectorStore } from './vector-store.js';
 
 /**
  * Context Engine — ties the walker/indexer/retriever together and owns the
@@ -23,6 +38,14 @@ import { tokenizeCode } from './tokenize.js';
  * nothing); otherwise the exact resolved set. Allocation reserves a small
  * per-root minimum for roots with hits, fills the remaining budget by global
  * relevance, and reclaims the budget of zero-hit roots (no naive equal split).
+ *
+ * Phase 8 — **hybrid retrieval (opt-in).** When constructed with an
+ * {@link Embedder}, the engine also embeds each file's chunks into a
+ * {@link VectorStore} (through a content-hash {@link EmbeddingCache}, so a save
+ * re-embeds only changed chunks) and exposes {@link ContextEngine.hybridRetrieve}
+ * — lexical (BM25, symbol→chunk-mapped) and vector lists fused by Reciprocal
+ * Rank Fusion across expanded sub-queries, then reranked. With no embedder it
+ * degrades to the lexical list alone, so BM25-only behaviour is unchanged.
  */
 
 /** Sentinel root for single-root callers that do not pass an explicit `rootId`. */
@@ -46,17 +69,42 @@ export interface ScopedMatch extends SymbolMatch {
 interface RootSegment {
   retriever: CodeRetriever;
   contentByFile: Map<string, string>;
+  /** Phase 8 — chunk ranges per file, for symbol→chunk fusion + snippet expansion. */
+  chunksByFile: Map<string, ChunkRef[]>;
+}
+
+/** Phase 8 — optional embedding/hybrid wiring; absent ⇒ BM25-only (unchanged). */
+export interface ContextEngineOptions {
+  embedder?: Embedder;
+  reranker?: Reranker;
+  queryExpander?: QueryExpander;
 }
 
 export class ContextEngine {
   private readonly segments = new Map<string, RootSegment>();
+  private readonly embedder?: Embedder;
+  private readonly embeddingCache?: EmbeddingCache;
+  private readonly vectorStore?: VectorStore;
+  private readonly reranker: Reranker;
+  private readonly queryExpander: QueryExpander;
 
-  constructor(private readonly indexer: CodeIndexer) {}
+  constructor(
+    private readonly indexer: CodeIndexer,
+    opts: ContextEngineOptions = {},
+  ) {
+    this.embedder = opts.embedder;
+    if (this.embedder) {
+      this.embeddingCache = new EmbeddingCache(this.embedder);
+      this.vectorStore = new VectorStore(this.embedder.dimensions);
+    }
+    this.reranker = opts.reranker ?? new IdentityReranker();
+    this.queryExpander = opts.queryExpander ?? new SingleQueryExpander();
+  }
 
   private segment(rootId: string): RootSegment {
     let seg = this.segments.get(rootId);
     if (!seg) {
-      seg = { retriever: new CodeRetriever(), contentByFile: new Map() };
+      seg = { retriever: new CodeRetriever(), contentByFile: new Map(), chunksByFile: new Map() };
       this.segments.set(rootId, seg);
     }
     return seg;
@@ -64,10 +112,34 @@ export class ContextEngine {
 
   /** Index (or re-index) one file in a root segment: refresh symbols + content. */
   async indexFile(filePath: string, content: string, rootId = DEFAULT_ROOT_ID): Promise<void> {
-    const { symbols } = await this.indexer.indexFile(filePath, content);
+    const { symbols, chunks } = await this.indexer.indexFile(filePath, content);
     const seg = this.segment(rootId);
     seg.retriever.setFileSymbols(filePath, symbols);
     seg.contentByFile.set(filePath, content);
+
+    const refs: ChunkRef[] = chunks.map((c) => ({
+      rootId,
+      filePath,
+      startLine: c.start,
+      endLine: c.end,
+    }));
+    seg.chunksByFile.set(filePath, refs);
+
+    // Phase 8 — embed chunks (cache-deduped) into the vector store, if enabled.
+    if (this.embeddingCache && this.vectorStore && chunks.length > 0) {
+      const embeddings = await this.embeddingCache.embed(chunks.map((c) => c.getText()));
+      this.vectorStore.setFileVectors(
+        rootId,
+        filePath,
+        chunks.map((c, i) => ({
+          chunkId: chunkRefKey(refs[i]!),
+          filePath,
+          startLine: c.start,
+          endLine: c.end,
+          embedding: embeddings[i]!,
+        })),
+      );
+    }
   }
 
   /** Drop a file from its root segment (T-604 unlink path). */
@@ -76,11 +148,14 @@ export class ContextEngine {
     if (!seg) return;
     seg.retriever.removeFile(filePath);
     seg.contentByFile.delete(filePath);
+    seg.chunksByFile.delete(filePath);
+    this.vectorStore?.removeFile(rootId, filePath);
   }
 
   /** Drop an entire root segment (T-MR04 — removing a workspace root). */
   removeRoot(rootId: string): void {
     this.segments.delete(rootId);
+    this.vectorStore?.removeRoot(rootId);
   }
 
   /** Root IDs that currently have a segment. */
@@ -141,6 +216,101 @@ export class ContextEngine {
     }
     return mergeOverlapping(expanded);
   }
+
+  /** True when an embedder is wired and the vector path is live. */
+  get hybridEnabled(): boolean {
+    return !!this.vectorStore;
+  }
+
+  /**
+   * Phase 8 — hybrid retrieve. Expands the query into sub-queries; for each,
+   * runs lexical (BM25, symbol→chunk-mapped) and vector retrieval and fuses them
+   * with RRF; merges sub-query results with RRF; reranks the fused head. With no
+   * embedder, the vector list is empty so the result is the lexical ranking
+   * alone. Returns chunk refs ranked best-first (expand via `snippetsForChunks`).
+   */
+  async hybridRetrieve(query: string, k: number, opts: RetrieveOptions = {}): Promise<ChunkRef[]> {
+    if (opts.rootIds && opts.rootIds.length === 0) return [];
+    if (k <= 0) return [];
+    const depth = Math.max(k * 4, 20);
+    const subQueries = await this.queryExpander.expand(query);
+
+    const perQueryFused: RankedItem<ChunkRef>[][] = [];
+    for (const subQuery of subQueries) {
+      const lexical = this.lexicalChunkList(subQuery, depth, opts);
+      const vector = await this.vectorChunkList(subQuery, depth, opts.rootIds);
+      // Fuse lexical + vector for this sub-query into one ranked list.
+      const fused = rrfFuse([lexical, vector]).map((f) => ({ key: f.key, item: f.item }));
+      perQueryFused.push(fused);
+    }
+
+    const merged = rrfFuse(perQueryFused).slice(0, depth);
+    const reranked = await this.reranker.rerank(
+      query,
+      merged.map((f) => f.item),
+    );
+    return reranked.slice(0, k);
+  }
+
+  /** BM25 hits for one query, mapped to their containing chunk, deduped, ordered. */
+  private lexicalChunkList(
+    query: string,
+    k: number,
+    opts: RetrieveOptions,
+  ): RankedItem<ChunkRef>[] {
+    const matches = this.retrieve(query, k, opts);
+    const refs: ChunkRef[] = matches.map((m) => {
+      const chunks = this.segments.get(m.rootId)?.chunksByFile.get(m.filePath) ?? [];
+      return (
+        symbolToChunk(m, chunks) ?? {
+          rootId: m.rootId,
+          filePath: m.filePath,
+          startLine: m.startLine,
+          endLine: m.endLine,
+        }
+      );
+    });
+    return dedupeRanked(refs);
+  }
+
+  /** Vector hits for one query as a ranked chunk list (empty if no embedder). */
+  private async vectorChunkList(
+    query: string,
+    k: number,
+    rootIds?: string[],
+  ): Promise<RankedItem<ChunkRef>[]> {
+    if (!this.vectorStore || !this.embedder) return [];
+    const [qVec] = await this.embedder.embed([query]);
+    if (!qVec) return [];
+    const hits = this.vectorStore.query(qVec, k, rootIds);
+    return dedupeRanked(hits.map(vectorHitToChunkRef));
+  }
+
+  /** Expand ranked chunk refs into merged ±context snippets (Phase 8 hybrid path). */
+  snippetsForChunks(refs: ChunkRef[], contextLines = 20): Snippet[] {
+    const expanded: Snippet[] = [];
+    for (const ref of refs) {
+      const content = this.segments.get(ref.rootId)?.contentByFile.get(ref.filePath);
+      if (content === undefined) continue;
+      expanded.push(
+        new Snippet(ref.filePath, content, ref.startLine, ref.endLine).expand(contextLines),
+      );
+    }
+    return mergeOverlapping(expanded);
+  }
+}
+
+/** Build a ranked list from an ordered chunk-ref array, keeping the best rank per key. */
+function dedupeRanked(refs: ChunkRef[]): RankedItem<ChunkRef>[] {
+  const seen = new Set<string>();
+  const out: RankedItem<ChunkRef>[] = [];
+  for (const ref of refs) {
+    const key = chunkRefKey(ref);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, item: ref });
+  }
+  return out;
 }
 
 /**
