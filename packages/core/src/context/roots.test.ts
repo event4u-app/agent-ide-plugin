@@ -29,8 +29,15 @@ describe('canonicalize', () => {
 
 describe('uriToPath', () => {
   it('resolves file:// URIs and passes bare paths through', () => {
-    expect(uriToPath('file:///repo/web')).toBe('/repo/web');
+    // Bare paths pass through unchanged on every platform.
     expect(uriToPath('/repo/web')).toBe('/repo/web');
+    // file:// resolution is delegated to fileURLToPath, which is OS-specific:
+    // Windows requires a drive-lettered absolute URL, POSIX a leading slash.
+    if (process.platform === 'win32') {
+      expect(uriToPath('file:///C:/repo/web')).toBe('C:\\repo\\web');
+    } else {
+      expect(uriToPath('file:///repo/web')).toBe('/repo/web');
+    }
   });
 });
 
