@@ -27,6 +27,42 @@ models:
     cache_write_per_mtok: 1.00
     cache_read_per_mtok: 0.08
     context_window: 200000
+  # OpenAI (T-501). v0 indicative list prices — source: https://openai.com/api/pricing
+  # as of 2026-05-30; superseded by the remote Sigstore-signed feed in Sprint 14.
+  - id: gpt-5
+    family: openai
+    input_per_mtok: 1.25
+    output_per_mtok: 10.00
+    cache_read_per_mtok: 0.125
+    context_window: 400000
+  - id: gpt-5-codex
+    family: openai
+    input_per_mtok: 1.25
+    output_per_mtok: 10.00
+    cache_read_per_mtok: 0.125
+    context_window: 400000
+  # Google / Gemini (T-503). v0 indicative list prices — source:
+  # https://ai.google.dev/pricing as of 2026-05-30.
+  - id: gemini-3-pro
+    family: google
+    input_per_mtok: 1.25
+    output_per_mtok: 10.00
+    cache_read_per_mtok: 0.125
+    context_window: 1000000
+  - id: gemini-3-flash-preview
+    family: google
+    input_per_mtok: 0.10
+    output_per_mtok: 0.40
+    cache_read_per_mtok: 0.025
+    context_window: 1000000
+# T-506 — user-provided prices for OpenAI-compatible endpoints. Empty by default;
+# the bundled entry below documents the shape. Source: provider's own pricing page.
+custom_endpoints:
+  - id: llama-3.3-70b
+    family: compat
+    input_per_mtok: 0.59
+    output_per_mtok: 0.79
+    context_window: 128000
 subscriptions:
   - id: claude-pro
     family: anthropic

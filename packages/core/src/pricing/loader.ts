@@ -12,7 +12,9 @@ import { z } from 'zod';
 
 const ModelPriceSchema = z.object({
   id: z.string().min(1),
-  family: z.enum(['anthropic']),
+  // T-501/T-506: families beyond Anthropic land in v1.0 Sprint 5.
+  // `compat` covers user-provided OpenAI-compatible endpoints.
+  family: z.enum(['anthropic', 'openai', 'google', 'compat']),
   input_per_mtok: z.number().nonnegative(),
   output_per_mtok: z.number().nonnegative(),
   cache_write_per_mtok: z.number().nonnegative().optional(),
@@ -34,6 +36,10 @@ export const PricingBookSchema = z.object({
   currency: z.literal('USD'),
   models: z.array(ModelPriceSchema).min(1),
   subscriptions: z.array(SubscriptionPriceSchema).default([]),
+  // T-506 — user-provided prices for OpenAI-compatible endpoints
+  // (Mistral / Together / Groq / OpenRouter / self-hosted). Merged into the
+  // same model lookup so cost-tracking treats them uniformly.
+  custom_endpoints: z.array(ModelPriceSchema).default([]),
 });
 
 export type ModelPrice = z.infer<typeof ModelPriceSchema>;
@@ -79,6 +85,9 @@ export class PricingBook {
 
   private constructor(readonly data: PricingBookData) {
     for (const m of data.models) this.modelsById.set(m.id, m);
+    // Custom-endpoint prices share the model lookup; a duplicate id lets a
+    // user override a bundled price for their own endpoint.
+    for (const m of data.custom_endpoints) this.modelsById.set(m.id, m);
     for (const s of data.subscriptions) this.subscriptionsById.set(s.id, s);
   }
 

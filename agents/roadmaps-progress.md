@@ -6,10 +6,10 @@
 
 ## Overall
 
-**85 / 346 steps done · 25%**
+**93 / 346 steps done · 27%**
 
 ```text
-██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   25%
+███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   27%
 ```
 
 ## Open roadmaps
@@ -21,7 +21,7 @@
 | 3 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 7 | 67 | 48 | 18 | 0 | 1 | ███░░░░░░░ 27% |
 | 4 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 18 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 | 5 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 35 | 5 | 0 | ██████░░░░ 56% |
-| 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 122 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
+| 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 114 | 8 | 0 | 0 | █░░░░░░░░░ 7% |
 
 ---
 
@@ -89,11 +89,11 @@
 
 ### [road-to-v1-0.md](roadmaps/road-to-v1-0.md)
 
-**v1.0 — Internal alpha, dogfood it** — 0 / 122 done (0%)
+**v1.0 — Internal alpha, dogfood it** — 8 / 122 done (7%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
-| 5 | Catch-up: missing providers + capability manifests (2-3 weeks) | ⬜ not started | 10 | 0 | 0 | 0 | 0% |
+| 5 | Catch-up: missing providers + capability manifests (2-3 weeks) | 🔄 in progress | 2 | 8 | 0 | 0 | 80% |
 | 6 | Context Engine v0: Tree-sitter + BM25 (3 weeks, moved up) | ⬜ not started | 10 | 0 | 0 | 0 | 0% |
 | 7 | Multi-step agent loop + Multi-file edit + Action-card polish (3 weeks) | ⬜ not started | 14 | 0 | 0 | 0 | 0% |
 | 8 | Context Engine v1: Embeddings + hybrid retrieval (2-3 weeks, moved up) | ⬜ not started | 9 | 0 | 0 | 0 | 0% |
