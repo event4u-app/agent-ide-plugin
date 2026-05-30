@@ -1,6 +1,7 @@
 {
   "name": "@event4u-agent/core",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "main": "./dist/server.js",

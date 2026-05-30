@@ -35,9 +35,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
       - run: pnpm run format
-      # build before typecheck: workspace .d.ts must exist for cross-package
-      # type resolution (tsc -p does not build project references).
       - run: pnpm run build
+      # typecheck is self-contained: the root script runs `tsc -b` over the
+      # composite package graph (emitting the cross-package .d.ts) before the
+      # non-composite vscode client's `tsc -p --noEmit`, so it passes from a
+      # clean checkout without a prior build.
       - run: pnpm run typecheck
       - run: pnpm run test
 

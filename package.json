@@ -1,6 +1,7 @@
 {
   "name": "event4u-agent",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "event4u Agent — IDE plugin (JetBrains + VS Code) with a Node sidecar.",
   "type": "module",
@@ -19,7 +20,7 @@
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "tsc -b packages/core --emitDeclarationOnly && tsc -p clients/vscode/tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

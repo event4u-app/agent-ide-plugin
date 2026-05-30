@@ -10,6 +10,12 @@ streaming, a permission-gated tool loop, and Claude CLI mode.
 > and unit-tested. The chat UI, settings panel, statusbar widget, and
 > OS-keychain adapters live on the IDE side; the next sprint owns them.
 >
+> **There is no installable IDE integration yet** — you cannot install
+> this into JetBrains or VS Code and use it today. The Node sidecar is
+> complete and tested, but the chat UI, settings panel, and statusbar
+> widget that turn it into a usable plugin are still pending (tracked in
+> `agents/roadmaps/road-to-mvp-ui-finish.md`).
+>
 > See `docs/architecture.md` for the layout, `docs/customization.md` for
 > the settings surface, `agents/roadmaps/road-to-mvp.md` for the per-task
 > ledger, and `docs/MANUAL_VERIFICATION.md` for the GUI smoke checklist
