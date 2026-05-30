@@ -81,6 +81,6 @@ class WorkspaceFolderService(private val project: Project) : Disposable {
     }
 
     companion object {
-        fun getInstance(project: Project): WorkspaceFolderService = project.getService(WorkspaceFolderService::class.java)
+        fun getInstance(project: Project) = project.getService(WorkspaceFolderService::class.java)
     }
 }
