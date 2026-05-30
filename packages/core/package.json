@@ -17,6 +17,7 @@
     "@event4u-agent/protocol": "workspace:*",
     "@event4u-agent/shared": "workspace:*",
     "chokidar": "^5.0.0",
+    "ignore": "^7.0.5",
     "minisearch": "^7.2.0",
     "openai": "^6.39.1",
     "tree-sitter-wasms": "^0.1.13",
