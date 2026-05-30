@@ -68,6 +68,23 @@ const McpSchema = z
   .partial()
   .default({});
 
+/**
+ * T-1403 — telemetry opt-in. Engagement logging is OFF by default; a user
+ * turns it on explicitly. When disabled the recorder is a no-op (zero disk
+ * I/O). Only invocation metadata is ever recorded — no content.
+ */
+const TelemetrySchema = z
+  .object({
+    artifact_engagement: z
+      .object({
+        enabled: z.boolean().default(false),
+      })
+      .partial()
+      .default({}),
+  })
+  .partial()
+  .default({});
+
 const LlmSchema = z
   .object({
     default_provider: LlmProvider.default('anthropic'),
@@ -97,6 +114,7 @@ export const AgentSettingsSchema = z
     roles: RolesSchema,
     commands: CommandsSchema,
     mcp: McpSchema,
+    telemetry: TelemetrySchema,
   })
   .partial()
   .passthrough()
@@ -117,6 +135,11 @@ export const AgentSettingsSchema = z
     },
     mcp: {
       servers: parsed.mcp?.servers ?? [],
+    },
+    telemetry: {
+      artifact_engagement: {
+        enabled: parsed.telemetry?.artifact_engagement?.enabled ?? false,
+      },
     },
   }));
 

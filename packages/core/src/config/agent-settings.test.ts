@@ -35,7 +35,14 @@ commands:
       roles: { active_role: 'developer' },
       commands: { suggestion: { enabled: false, senior_gate: true } },
       mcp: { servers: [] },
+      telemetry: { artifact_engagement: { enabled: false } },
     });
+  });
+
+  it('defaults telemetry engagement to OFF (opt-in) and reads an explicit opt-in', () => {
+    expect(DEFAULT_SETTINGS.telemetry).toEqual({ artifact_engagement: { enabled: false } });
+    const opted = parseSettings('telemetry:\n  artifact_engagement:\n    enabled: true\n');
+    expect(opted.telemetry.artifact_engagement.enabled).toBe(true);
   });
 
   it('parses OpenAI-compatible provider endpoints (T-506)', () => {
