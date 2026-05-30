@@ -34,6 +34,7 @@ commands:
       llm: { default_provider: 'anthropic', default_mode: 'cli', providers: [] },
       roles: { active_role: 'developer' },
       commands: { suggestion: { enabled: false, senior_gate: true } },
+      mcp: { servers: [] },
     });
   });
 
@@ -101,6 +102,30 @@ commands:
 
   it('throws on top-level array (not a mapping)', () => {
     expect(() => parseSettings('- one\n- two\n')).toThrow(/top-level must be a mapping/);
+  });
+
+  it('defaults mcp.servers to an empty array when absent', () => {
+    expect(parseSettings('llm:\n  default_mode: cli\n').mcp.servers).toEqual([]);
+  });
+
+  it('parses mcp.servers with per-server defaults (T-1101)', () => {
+    const result = parseSettings(
+      'mcp:\n  servers:\n    - id: github\n      command: npx\n      args: ["-y", "gh-mcp"]\n',
+    );
+    expect(result.mcp.servers).toHaveLength(1);
+    expect(result.mcp.servers[0]).toMatchObject({
+      id: 'github',
+      command: 'npx',
+      args: ['-y', 'gh-mcp'],
+      env: {},
+      enabled: true,
+    });
+  });
+
+  it('rejects an mcp server id containing a colon', () => {
+    expect(() =>
+      parseSettings('mcp:\n  servers:\n    - id: "bad:id"\n      command: npx\n'),
+    ).toThrow(AgentSettingsError);
   });
 });
 
