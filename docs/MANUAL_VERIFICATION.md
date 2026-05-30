@@ -8,6 +8,8 @@
 > |---|---|
 > | T-103 (JetBrains plugin skeleton) | Plugin installs, tool-window appears |
 > | T-105 (Core↔Client RPC, JetBrains half) | Ping round-trip in a real IDE, IDE-restart leaves no zombie sidecar |
+> | T-MR09 (VS Code auto-enumerate) | Open roots reach the Core on activation + on change, with no user action |
+> | T-MR10 (JetBrains auto-enumerate) | Module content roots reach the Core; excluded/library roots absent |
 
 ## Prerequisites
 
@@ -198,6 +200,37 @@ chat history, index a target repo BM25-only vs hybrid, compare MRR / Recall@10.
 
 ```
 - 2026-MM-DD · Phase 8 verified by <name> · model <id> · re-embed <ms> · MRR BM25 <x> → hybrid <y>
+```
+
+## Phase B (multi-project) — auto-detect open roots
+
+> Code + unit tests land in CI (`mapWorkspaceFolders`, `WorkspaceCoordinator`
+> reconciliation). What needs a running IDE: that the client's enumeration
+> actually reaches the Core on connect and on every change, with no user action.
+
+### T-MR09 — VS Code auto-enumerate + watch
+
+1. `task vscode:build`, launch the Extension Host (F5 / `code --extensionDevelopmentPath`).
+2. Open a `.code-workspace` with **two** folders.
+
+- [ ] Core stderr (or a `rootStatus` poll) shows two roots logged on activation, no chat opened.
+- [ ] Add a third folder live → Core indexes it without a restart.
+- [ ] Remove a folder → Core tears down only that root's segment.
+- [ ] No-folder window and a single-folder window both behave (no crash; single-root legacy path).
+
+### T-MR10 — JetBrains auto-enumerate + watch
+
+1. `task jetbrains:runIde` (needs JDK 17 + GUI).
+2. Open a PhpStorm project with **two** modules (distinct content roots).
+
+- [ ] Both module content roots reach the Core on startup; excluded / library / SDK roots are absent.
+- [ ] A second IDE window's project does **not** leak its roots into the first (active-`Project` scoping, not `getOpenProjects()`).
+- [ ] Adding / removing a module pushes a delta; the Core reconciles.
+
+### Record the result
+
+```
+- 2026-MM-DD · Phase B verified by <name> · IDE <vscode|phpstorm> · roots auto-detected: <n>
 ```
 
 ## Verification log
