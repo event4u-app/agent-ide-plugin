@@ -6,10 +6,10 @@
 
 ## Overall
 
-**109 / 346 steps done · 31%**
+**115 / 346 steps done · 33%**
 
 ```text
-█████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░   31%
+█████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░   33%
 ```
 
 ## Open roadmaps
@@ -21,7 +21,7 @@
 | 3 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 7 | 67 | 48 | 18 | 0 | 1 | ███░░░░░░░ 27% |
 | 4 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 18 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 | 5 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 35 | 5 | 0 | ██████░░░░ 56% |
-| 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 107 | 15 | 0 | 0 | █░░░░░░░░░ 12% |
+| 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 101 | 21 | 0 | 0 | ██░░░░░░░░ 17% |
 
 ---
 
@@ -89,14 +89,14 @@
 
 ### [road-to-v1-0.md](roadmaps/road-to-v1-0.md)
 
-**v1.0 — Internal alpha, dogfood it** — 15 / 122 done (12%)
+**v1.0 — Internal alpha, dogfood it** — 21 / 122 done (17%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
 | 5 | Catch-up: missing providers + capability manifests (2-3 weeks) | 🔄 in progress | 2 | 8 | 0 | 0 | 80% |
 | 6 | Context Engine v0: Tree-sitter + BM25 (3 weeks, moved up) | 🔄 in progress | 3 | 7 | 0 | 0 | 70% |
 | 7 | Multi-step agent loop + Multi-file edit + Action-card polish (3 weeks) | ⬜ not started | 14 | 0 | 0 | 0 | 0% |
-| 8 | Context Engine v1: Embeddings + hybrid retrieval (2-3 weeks, moved up) | ⬜ not started | 9 | 0 | 0 | 0 | 0% |
+| 8 | Context Engine v1: Embeddings + hybrid retrieval (2-3 weeks, moved up) | 🔄 in progress | 3 | 6 | 0 | 0 | 67% |
 | 9 | Live PTY terminal + dual-surface sync (3 weeks, moved from S8) | ⬜ not started | 12 | 0 | 0 | 0 | 0% |
 | 10 | Native IDE depth (SweepAI-style) (3 weeks, moved from S9) | ⬜ not started | 11 | 0 | 0 | 0 | 0% |
 | 11 | MCP client + full agent-config coverage (3 weeks) | ⬜ not started | 10 | 0 | 0 | 0 | 0% |

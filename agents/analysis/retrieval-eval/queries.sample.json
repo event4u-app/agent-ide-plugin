@@ -1,0 +1,15 @@
+{
+  "description": "Sample held-out retrieval eval set for Phase 8. Copy to queries.json and fill from real chat history. `relevant` lists the file paths (optionally symbol names) a human judges correct for the query.",
+  "queries": [
+    {
+      "query": "where do we validate the user's session token",
+      "relevant": ["packages/core/src/context/engine.ts"],
+      "note": "natural-language query with no exact symbol-name match — a semantic win for the vector side"
+    },
+    {
+      "query": "BM25 digit penalty for generated files",
+      "relevant": ["packages/core/src/context/bm25.ts"],
+      "note": "lexical query — BM25 should already nail this; hybrid must not regress it"
+    }
+  ]
+}
