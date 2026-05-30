@@ -55,23 +55,35 @@ export class WorkspaceWalker {
     return (this.ig ?? ignore().add(BUILTIN_SKIP)).ignores(normalized);
   }
 
-  /** Full recursive enumeration of non-ignored files (workspace-relative paths). */
-  async scan(): Promise<string[]> {
+  /**
+   * Full recursive enumeration of non-ignored files (workspace-relative paths).
+   *
+   * `opts.skipDir` (T-MR03) prunes a subtree before ignore evaluation — the
+   * multi-root walker uses it to exclude a nested explicit child root so the
+   * child owns those files and a parent `.gitignore` cannot suppress the child.
+   */
+  async scan(opts: { skipDir?: (relDir: string) => boolean } = {}): Promise<string[]> {
     await this.loadIgnore();
     const out: string[] = [];
-    await this.walkDir(this.opts.root, out);
+    await this.walkDir(this.opts.root, out, opts.skipDir);
     return out.sort();
   }
 
-  private async walkDir(dir: string, out: string[]): Promise<void> {
+  private async walkDir(
+    dir: string,
+    out: string[],
+    skipDir?: (relDir: string) => boolean,
+  ): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       const full = join(dir, entry.name);
       const rel = relative(this.opts.root, full).split(sep).join('/');
       if (entry.isDirectory()) {
+        // Prune child roots before ignore so the parent ignore cannot suppress them.
+        if (skipDir?.(rel)) continue;
         // Match directories with a trailing slash so ignore rules apply.
         if (this.isIgnored(`${rel}/`) || BUILTIN_SKIP.includes(entry.name)) continue;
-        await this.walkDir(full, out);
+        await this.walkDir(full, out, skipDir);
       } else if (entry.isFile()) {
         if (!this.isIgnored(rel)) out.push(rel);
       }
