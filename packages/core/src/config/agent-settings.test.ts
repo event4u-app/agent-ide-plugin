@@ -31,9 +31,32 @@ commands:
     senior_gate: true
 `;
     expect(parseSettings(yamlText)).toEqual({
-      llm: { default_provider: 'anthropic', default_mode: 'cli' },
+      llm: { default_provider: 'anthropic', default_mode: 'cli', providers: [] },
       roles: { active_role: 'developer' },
       commands: { suggestion: { enabled: false, senior_gate: true } },
+    });
+  });
+
+  it('parses OpenAI-compatible provider endpoints (T-506)', () => {
+    const yamlText = `
+llm:
+  default_provider: openai-compat
+  providers:
+    - id: groq
+      base_url: https://api.groq.com/openai/v1
+      api_key_env: GROQ_API_KEY
+      default_model: llama-3.3-70b
+    - id: together
+      base_url: https://api.together.xyz/v1
+`;
+    const result = parseSettings(yamlText);
+    expect(result.llm.default_provider).toBe('openai-compat');
+    expect(result.llm.providers).toHaveLength(2);
+    expect(result.llm.providers[0]).toMatchObject({
+      id: 'groq',
+      base_url: 'https://api.groq.com/openai/v1',
+      api_key_env: 'GROQ_API_KEY',
+      default_model: 'llama-3.3-70b',
     });
   });
 

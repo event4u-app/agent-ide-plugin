@@ -11,9 +11,25 @@ import { z, type ZodType } from 'zod';
  * function over file content.
  */
 
-const LlmProvider = z.enum(['anthropic']);
+const LlmProvider = z.enum(['anthropic', 'openai', 'codex', 'gemini', 'openai-compat']);
 const LlmMode = z.enum(['api', 'cli', 'auto']);
 const Role = z.enum(['developer', 'reviewer', 'tester', 'po', 'incident', 'planner']);
+
+/**
+ * T-506 — OpenAI-compatible HTTP endpoint config. One entry per Mistral /
+ * Together / Groq / OpenRouter / self-hosted endpoint. The API key is read
+ * from the named environment variable (never inlined in the YAML); pricing for
+ * these models comes from `prices.yml::custom_endpoints`.
+ */
+const CompatProviderSchema = z.object({
+  id: z.string().min(1),
+  base_url: z.string().url(),
+  /** Env var holding the bearer token. Defaults to `<ID>_API_KEY` upstream. */
+  api_key_env: z.string().min(1).optional(),
+  /** Optional default model id for this endpoint. */
+  default_model: z.string().min(1).optional(),
+});
+export type CompatProvider = z.infer<typeof CompatProviderSchema>;
 
 const CommandSuggestionSchema = z
   .object({
@@ -27,6 +43,7 @@ const LlmSchema = z
   .object({
     default_provider: LlmProvider.default('anthropic'),
     default_mode: LlmMode.default('auto'),
+    providers: z.array(CompatProviderSchema).default([]),
   })
   .partial()
   .default({});
@@ -57,6 +74,7 @@ export const AgentSettingsSchema = z
     llm: {
       default_provider: parsed.llm?.default_provider ?? 'anthropic',
       default_mode: parsed.llm?.default_mode ?? 'auto',
+      providers: parsed.llm?.providers ?? [],
     },
     roles: {
       active_role: parsed.roles?.active_role,
