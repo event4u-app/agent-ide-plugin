@@ -3,6 +3,7 @@
   "displayName": "event4u Agent",
   "description": "event4u Agent — AI coding assistant powered by your agent-config tree.",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "type": "commonjs",
   "publisher": "event4u",

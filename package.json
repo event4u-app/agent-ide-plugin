@@ -1,6 +1,7 @@
 {
   "name": "event4u-agent",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "event4u Agent — IDE plugin (JetBrains + VS Code) with a Node sidecar.",
   "type": "module",
