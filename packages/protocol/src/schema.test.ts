@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ConnectRequestSchema,
+  ContextScopeSchema,
   EchoRequestSchema,
   EchoResponseSchema,
   EnvelopeSchema,
   MethodNameSchema,
   Methods,
   PingResponseSchema,
+  RootIndexStatusSchema,
+  WorkspaceFolderSchema,
+  WorkspaceFoldersChangedRequestSchema,
 } from './schema.js';
 
 describe('EnvelopeSchema', () => {
@@ -42,13 +47,77 @@ describe('method schemas', () => {
   });
 });
 
+describe('workspace-folder schemas', () => {
+  const folder = {
+    uri: 'file:///repo/web',
+    stableId: 'file:///repo/web',
+    displayName: 'web',
+    kind: 'folder',
+  };
+
+  it('accepts a well-formed workspace folder', () => {
+    expect(WorkspaceFolderSchema.parse(folder).displayName).toBe('web');
+  });
+
+  it('rejects a folder with an empty uri', () => {
+    expect(() => WorkspaceFolderSchema.parse({ ...folder, uri: '' })).toThrow();
+  });
+
+  it('connect handshake defaults to the empty single-root fallback', () => {
+    expect(ConnectRequestSchema.parse({}).workspaceFolders).toEqual([]);
+    expect(
+      ConnectRequestSchema.parse({ workspaceFolders: [folder] }).workspaceFolders,
+    ).toHaveLength(1);
+  });
+
+  it('workspaceFoldersChanged defaults added/removed to empty lists', () => {
+    const parsed = WorkspaceFoldersChangedRequestSchema.parse({ added: [folder] });
+    expect(parsed.added).toHaveLength(1);
+    expect(parsed.removed).toEqual([]);
+  });
+
+  it('root index status round-trips with nullable fields', () => {
+    const ready = RootIndexStatusSchema.parse({
+      stableId: 's1',
+      state: 'ready',
+      fileCount: 42,
+      totalFiles: 42,
+      message: null,
+    });
+    expect(ready.state).toBe('ready');
+    expect(() =>
+      RootIndexStatusSchema.parse({ stableId: 's1', state: 'bogus', fileCount: 0 }),
+    ).toThrow();
+  });
+});
+
+describe('context scope (discriminated union)', () => {
+  it('accepts all / roots / none', () => {
+    expect(ContextScopeSchema.parse({ kind: 'all' }).kind).toBe('all');
+    expect(ContextScopeSchema.parse({ kind: 'none' }).kind).toBe('none');
+    const roots = ContextScopeSchema.parse({ kind: 'roots', rootIds: ['a', 'b'] });
+    expect(roots.kind === 'roots' && roots.rootIds).toEqual(['a', 'b']);
+  });
+
+  it('rejects an empty explicit root set (use kind:none instead)', () => {
+    expect(() => ContextScopeSchema.parse({ kind: 'roots', rootIds: [] })).toThrow();
+  });
+});
+
 describe('method registry', () => {
-  it('exposes ping and echo', () => {
-    expect(Object.keys(Methods).sort()).toEqual(['echo', 'ping']);
+  it('exposes the multi-project methods alongside ping/echo', () => {
+    expect(Object.keys(Methods).sort()).toEqual([
+      'connect',
+      'echo',
+      'ping',
+      'rootStatus',
+      'workspaceFoldersChanged',
+    ]);
   });
 
   it('MethodNameSchema only accepts registered names', () => {
     expect(MethodNameSchema.parse('ping')).toBe('ping');
+    expect(MethodNameSchema.parse('connect')).toBe('connect');
     expect(() => MethodNameSchema.parse('frobnicate')).toThrow();
   });
 });

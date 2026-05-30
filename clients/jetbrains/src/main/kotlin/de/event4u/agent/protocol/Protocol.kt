@@ -28,3 +28,53 @@ data class EchoRequest(
 data class EchoResponse(
     val text: String,
 )
+
+/** A project root the IDE window currently has open. */
+@Serializable
+data class WorkspaceFolder(
+    val uri: String,
+    val stableId: String,
+    val displayName: String,
+    val kind: String,
+)
+
+/** Per-root index status. `state` is one of indexing | ready | error. */
+@Serializable
+data class RootIndexStatus(
+    val stableId: String,
+    val state: String,
+    val fileCount: Int,
+    val totalFiles: Int? = null,
+    val message: String? = null,
+)
+
+/** Connection handshake; reports every open root. */
+@Serializable
+data class ConnectRequest(
+    val workspaceFolders: List<WorkspaceFolder> = emptyList(),
+)
+
+@Serializable
+data class ConnectResponse(
+    val ack: Boolean,
+    val roots: List<WorkspaceFolder>,
+    val status: List<RootIndexStatus>,
+)
+
+/** Delta of opened / closed roots. */
+@Serializable
+data class WorkspaceFoldersChangedRequest(
+    val added: List<WorkspaceFolder> = emptyList(),
+    val removed: List<String> = emptyList(),
+)
+
+@Serializable
+data class WorkspaceFoldersChangedResponse(
+    val ack: Boolean,
+    val status: List<RootIndexStatus>,
+)
+
+@Serializable
+data class RootStatusResponse(
+    val status: List<RootIndexStatus>,
+)
