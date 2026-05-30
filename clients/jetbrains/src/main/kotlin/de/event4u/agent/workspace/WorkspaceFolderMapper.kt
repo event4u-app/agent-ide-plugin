@@ -7,12 +7,12 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/**
+/*
  * T-MR10 — pure mapping + diff for the JetBrains workspace-folder sync.
  *
  * Kept free of any IntelliJ Platform API so it is unit-testable on the JDK-17
  * CI gate without a running IDE. The IDE-facing glue (module enumeration,
- * `ModuleRootListener`) lives in [ModuleRootEnumerator] / [WorkspaceFolderService]
+ * ModuleRootListener) lives in ModuleRootEnumerator / WorkspaceFolderService
  * and delegates the payload shaping here.
  *
  * A root's content-root URL is both its `uri` and its `stableId` — stable
