@@ -5,6 +5,7 @@ node_modules/
 coverage/
 pnpm-lock.yaml
 clients/jetbrains/
+clients/vscode/sidecar/
 agents/
 docs/
 *.md

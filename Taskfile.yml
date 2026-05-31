@@ -57,6 +57,12 @@ tasks:
       - task: typecheck
       - task: test
 
+  package:
+    desc: Build both installable artifacts (.vsix + JetBrains ZIP) with the sidecar bundled
+    cmds:
+      - task: vscode:package
+      - task: jetbrains:package
+
   # --- JetBrains client (requires JDK 17 + Gradle wrapper; not runnable without a JVM) ---
   jetbrains:setup:
     desc: One-time local toolchain for the JetBrains client — JDK 17, Gradle, wrapper (macOS/Homebrew)
@@ -90,6 +96,15 @@ tasks:
         export JAVA_HOME="${JAVA_HOME:-$(brew --prefix openjdk@17 2>/dev/null)/libexec/openjdk.jdk/Contents/Home}"
         ./gradlew runIde
 
+  jetbrains:package:
+    desc: Build the JetBrains plugin ZIP (build/distributions/) with the sidecar bundled (T-PRD11)
+    deps: [build]
+    dir: clients/jetbrains
+    cmds:
+      - |
+        export JAVA_HOME="${JAVA_HOME:-$(brew --prefix openjdk@17 2>/dev/null)/libexec/openjdk.jdk/Contents/Home}"
+        ./gradlew buildPlugin
+
   # --- VS Code client ---
   vscode:build:
     desc: Bundle the VS Code extension
@@ -102,3 +117,10 @@ tasks:
     dir: clients/vscode
     cmds:
       - code --extensionDevelopmentPath="$(pwd)"
+
+  vscode:package:
+    desc: Build a .vsix (clients/vscode/event4u-agent.vsix) with the Agent Core sidecar bundled (T-PRD10)
+    deps: [build]
+    dir: clients/vscode
+    cmds:
+      - pnpm run package
