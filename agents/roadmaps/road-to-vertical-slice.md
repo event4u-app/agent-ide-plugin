@@ -66,10 +66,10 @@ complexity: standard
 
 > **Goal.** The VS Code webview sends a prompt, renders streamed tokens live, the Stop button cancels, and the cost footer fills in.
 
-- [~] **T-VS05 — host wiring.** Replace the `onDidReceiveMessage` stub in `clients/vscode/src/extension.ts` with a `chatSend` call through `sidecar-client.ts`; forward each streamed envelope to the webview via `postMessage`. <!-- IDE-runtime-gated: needs a real ChatHandler wired in main.ts + a streaming stream() method on SidecarClient (current request() is request/response only). Smoke steps in docs/MANUAL_VERIFICATION.md § Vertical slice. -->
-- [~] **T-VS06 — webview stream render.** `webview/chat-app.ts` appends `assistantToken` chunks to the active card live; shows a spinner while streaming; renders the final answer on `done`. <!-- IDE-runtime-gated: webview DOM render, needs Extension-Development-Host. -->
-- [~] **T-VS07 — Stop button.** A Stop control in the streaming card fires `chatCancel`; the partial answer is kept, the spinner clears, the card marks "stopped". <!-- IDE-runtime-gated: webview control + EDH smoke. Core chatCancel + partial-keep already shipped (T-VS02). -->
-- [~] **T-VS08 — cost footer.** Live token counter during the stream; final cost figure from the `done` payload after. <!-- IDE-runtime-gated: webview render. Cost shape (ChatCost) shipped in the done payload (T-VS04/T-VS12). -->
+- [~] **T-VS05 — host wiring.** Replace the `onDidReceiveMessage` stub in `clients/vscode/src/extension.ts` with a `chatSend` call through `sidecar-client.ts`; forward each streamed envelope to the webview via `postMessage`. <!-- DONE 2026-05-31: `SidecarClient.requestStream` (separate streaming-correlation map, terminal-resolves) + a host-side `ChatController` (chat-controller.ts) bridge webview send/stop/toggle to streaming chatSend/chatCancel, pushing a snapshot per token. Unit-tested (chat-controller.test.ts + sidecar-client requestStream integration). ADR-012. -->
+- [~] **T-VS06 — webview stream render.** `webview/chat-app.ts` appends `assistantToken` chunks to the active card live; shows a spinner while streaming; renders the final answer on `done`. <!-- Client logic shipped 2026-05-31 (ChatController pushes a fresh snapshot per token; chat-app re-renders + mode-pill streaming dot). Visual DOM render needs an Extension-Development-Host smoke run. -->
+- [~] **T-VS07 — Stop button.** A Stop control in the streaming card fires `chatCancel`; the partial answer is kept, the spinner clears, the card marks "stopped". <!-- Logic shipped 2026-05-31 (ChatController.stop → chatCancel; unit-tested). Webview Stop button already posts {kind:'stop'}; visual confirm needs EDH smoke. -->
+- [~] **T-VS08 — cost footer.** Live token counter during the stream; final cost figure from the `done` payload after. <!-- Logic shipped 2026-05-31 (ChatController fills costFooter from the done payload usage+cost). Visual render needs EDH smoke. -->
 
 ### Exit gate — Phase 2
 
@@ -83,9 +83,9 @@ complexity: standard
 
 > **Goal.** The same working path in the JetBrains sandbox IDE.
 
-- [~] **T-VS09 — controller holds the sidecar.** `SidecarClient.kt` keeps a persistent connection for the tool-window lifetime; `chat/ChatPanel.kt` sends `chatSend` and consumes the streamed envelopes. <!-- IDE-runtime-gated: needs JDK 17 + JetBrains sandbox (no JDK/GUI in autonomous env). Kotlin DTOs (ChatSendRequest/Response, ChatUsage, ChatCost, ChatCancel*) already codegen'd by T-VS01. -->
-- [~] **T-VS10 — stream render + Stop.** `ChatModel.kt` appends streamed tokens to the active message; a Stop action fires `chatCancel`; partial answer kept, status set to "stopped". <!-- IDE-runtime-gated: Swing/JCEF render + sandbox smoke. -->
-- [~] **T-VS11 — cost footer.** Wire `CostFooterFormatter.kt` to the live token counter + the final cost from `done` (pin `Locale.US` for number formatting per the known JetBrains gotcha). <!-- IDE-runtime-gated: Swing render. Cost shape shipped in done payload. -->
+- [~] **T-VS09 — controller holds the sidecar.** `SidecarClient.kt` keeps a persistent connection for the tool-window lifetime; `chat/ChatPanel.kt` sends `chatSend` and consumes the streamed envelopes. <!-- DONE 2026-05-31: `SidecarClient.requestStream` (streaming-correlation map) + a real `SidecarChatController` (replaces PlaceholderChatController) holding a persistent client per tool-window, streaming on a daemon thread, disposed with the content (no orphan sidecar). `gradle check` green (compile + ktlint + detekt + tests). ADR-012. -->
+- [~] **T-VS10 — stream render + Stop.** `ChatModel.kt` appends streamed tokens to the active message; a Stop action fires `chatCancel`; partial answer kept, status set to "stopped". <!-- Logic shipped 2026-05-31 (SidecarChatController appends tokens via copy() + onModelChange; Stop → chatCancel on its own thread; ChatPanel.renderModel self-marshals to the EDT). Swing visual confirm needs `task jetbrains:runIde`. -->
+- [~] **T-VS11 — cost footer.** Wire `CostFooterFormatter.kt` to the live token counter + the final cost from `done` (pin `Locale.US` for number formatting per the known JetBrains gotcha). <!-- Logic shipped 2026-05-31 (controller builds CostFooter from the done payload). Swing render + Locale.US formatting confirm needs runIde smoke. -->
 
 ### Exit gate — Phase 3
 
