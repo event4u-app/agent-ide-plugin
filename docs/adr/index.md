@@ -18,6 +18,7 @@
 | [ADR-012](ADR-012-streaming-client-integration.md) | Streaming Client Integration — Separate Correlation Map, Session conversationId, Mode→Provider, Env-Key, Snapshot-per-Token | Proposed | 2026-05-31 | road-to-vertical-slice Phase 2/3 (T-VS05–11) |
 | [ADR-013](ADR-013-tool-call-approval-events.md) | Tool-Call Lifecycle Events — One Union, Diff-in-Approval, Sealed-Class Codegen, Injected-Decide Orchestrator, Transport Deferred | Proposed | 2026-05-31 | road-to-product-readiness Phase 1 (T-PRD01/02/04) |
 | [ADR-014](ADR-014-trust-control-core.md) | Trust & Control Core — Separate Audit Log, Derived Risk Badge, Daily Budget Tracker, Standalone Agent Modes, ContextScope Codegen | Proposed | 2026-05-31 | road-to-product-readiness Phase 2 (T-PRD05/06/08/09) |
+| [ADR-015](ADR-015-git-loop-core.md) | Git-Loop Core — Diff-Driven Commit-Message Builder (Fail-Hard Parse), PR-Description Builder (Deterministic Strip Sanitiser), Review-Mode Change Summary (Pure Derivation), Transport Deferred | Proposed | 2026-05-31 | road-to-product-readiness Phase 4 (T-PRD14/15/16) |
 
 ## Status legend
 
