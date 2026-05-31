@@ -1,4 +1,7 @@
 import {
+  type ChatCancelResponse,
+  ChatCancelRequestSchema,
+  ChatSendRequestSchema,
   type ConnectResponse,
   ConnectRequestSchema,
   type Envelope,
@@ -13,6 +16,7 @@ import {
   WorkspaceFoldersChangedRequestSchema,
 } from '@event4u-agent/protocol';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
+import type { ChatHandler, EnvelopeSink } from './chat/handler.js';
 
 /** A handler maps a validated request payload to a response payload. */
 type Handler = (data: unknown) => Promise<unknown> | unknown;
@@ -26,12 +30,17 @@ type Handler = (data: unknown) => Promise<unknown> | unknown;
  *
  * Stateful workspace concerns (root registry, walk + index lifecycle, per-root
  * status) live behind an injected {@link WorkspaceCoordinator} (T-MR11) so the
- * dispatcher stays a thin routing layer.
+ * dispatcher stays a thin routing layer. Streaming chat turns are delegated to
+ * an injected {@link ChatHandler} (T-VS03); absent it, `chatSend` returns a
+ * clean `chat_not_configured` error rather than crashing.
  */
 export class Dispatcher {
   private readonly handlers: Record<string, Handler>;
 
-  constructor(private readonly coordinator: WorkspaceCoordinator = new WorkspaceCoordinator()) {
+  constructor(
+    private readonly coordinator: WorkspaceCoordinator = new WorkspaceCoordinator(),
+    private readonly chatHandler?: ChatHandler,
+  ) {
     this.handlers = {
       ping: (): PingResponse => ({ result: 'pong' }),
       echo: (data: unknown): EchoResponse => {
@@ -49,6 +58,10 @@ export class Dispatcher {
         return { ack: true, status };
       },
       rootStatus: (): RootStatusResponse => ({ status: this.coordinator.status() }),
+      chatCancel: (data: unknown): ChatCancelResponse => {
+        const req = ChatCancelRequestSchema.parse(data ?? {});
+        return { cancelled: this.chatHandler?.cancel(req.conversationId) ?? false };
+      },
     };
   }
 
@@ -57,7 +70,16 @@ export class Dispatcher {
     this.coordinator.dispose();
   }
 
-  async dispatch(envelope: Envelope): Promise<Envelope> {
+  /**
+   * Dispatch one inbound envelope and resolve with the terminal response.
+   *
+   * Request/response methods return their single envelope and never touch
+   * `emit`. The streaming `chatSend` method pushes `done:false` token envelopes
+   * through `emit` and resolves with the terminal `done:true` envelope — so the
+   * dispatcher always returns exactly one terminal envelope and never rejects
+   * (errors are wrapped), keeping a streaming client from hanging.
+   */
+  async dispatch(envelope: Envelope, emit?: EnvelopeSink): Promise<Envelope> {
     const methodResult = MethodNameSchema.safeParse(envelope.messageType);
     if (!methodResult.success) {
       return this.errorEnvelope(
@@ -71,6 +93,29 @@ export class Dispatcher {
     // `ping` takes no payload; validate it has the empty shape.
     if (method === 'ping') {
       PingRequestSchema.parse(envelope.data ?? {});
+    }
+
+    // Streaming method — delegated; the handler emits `done:false` tokens and
+    // returns the terminal envelope.
+    if (method === 'chatSend') {
+      if (!this.chatHandler) {
+        return this.errorEnvelope(
+          envelope.messageId,
+          'chat_not_configured',
+          'No chat handler is configured on this Core instance.',
+        );
+      }
+      try {
+        const req = ChatSendRequestSchema.parse(envelope.data ?? {});
+        return await this.chatHandler.handleSend(envelope.messageId, req, emit ?? (() => {}));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const code =
+          typeof (error as { code?: unknown }).code === 'string'
+            ? (error as { code: string }).code
+            : 'handler_error';
+        return this.errorEnvelope(envelope.messageId, code, message);
+      }
     }
 
     try {
