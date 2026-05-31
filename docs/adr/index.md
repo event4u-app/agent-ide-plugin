@@ -11,6 +11,7 @@
 | [ADR-005](ADR-005-workspace-root-identity.md) | Workspace Root Identity — uri / stableId / canonicalKey + nested & symlink rules | Proposed | 2026-05-30 | road-to-multi-project Phase A (T-MR01..T-MR07) |
 | [ADR-006](ADR-006-mcp-client-and-memory-format.md) | MCP Client (hand-rolled, zero-dep) + Local Memory Format (md+frontmatter) | Proposed | 2026-05-30 | road-to-v1-0 Phase 11 (T-1101/02/04/05/06) |
 | [ADR-007](ADR-007-pricing-signature-and-telemetry.md) | Pricing-Book Signature (Ed25519 over Sigstore for v0) + Telemetry Privacy Floor | Proposed | 2026-05-31 | road-to-v1-0 Phase 14 (T-1401/1403/1404) |
+| [ADR-008](ADR-008-chat-persistence-and-checkpoints.md) | Chat Persistence (append-only JSONL event log) + Copy-on-Write Forking + Metadata-only Checkpoints | Proposed | 2026-05-31 | road-to-v1-0 Phase 13 (T-1301/1302/1303/1307) |
 
 ## Status legend
 

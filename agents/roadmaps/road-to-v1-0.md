@@ -231,13 +231,13 @@ complexity: heavy
 
 > **Goal.** Everything that slipped from Sprints 5-12 lands here, plus persisted history, conversation forking, checkpoints, statusbar polish, abortable streaming refinements.
 
-- [ ] **T-1301 — Persisted chat history.** Conversation list in left sidebar of tool-window. Click opens past conversation. Search across history. Stored under `.event4u-agent/chats/` per workspace.
-- [ ] **T-1302 — Conversation forking.** Editing a past user message creates a fork — original conversation kept, branch starts from the edited turn.
-- [ ] **T-1303 — Checkpoints.** Multi-step agent runs auto-checkpoint at phase boundaries. User can "rewind to checkpoint" — restores conversation state + file state.
+- [~] **T-1301 — Persisted chat history.** <!-- core done 2026-05-31: packages/core/src/chat/ — append-only JSONL event log per conversation (created/message/checkpoint/meta events) under .event4u-agent/chats/<id>.jsonl, folded fail-open (tolerates torn trailing lines); ConversationStore (InMemory+File) with create/appendMessage/load/list; token-AND searchConversations across title+bodies, ranked recency-then-hits. 45 new tests. The left-sidebar conversation list + click-to-open + search box are IDE surfaces (T-1301 stays [~]). ADR-008. --> Conversation list in left sidebar of tool-window. Click opens past conversation. Search across history. Stored under `.event4u-agent/chats/` per workspace.
+- [~] **T-1302 — Conversation forking.** <!-- core done 2026-05-31: ConversationStore.fork(id, atTurnIndex, {editedUserMessage}) — copy-on-write new conversation id with parentId + forkedFromTurnIndex, replays the kept prefix as fresh events, leaves the parent untouched; turn index clamped to the available prefix. The edit-a-past-message affordance is the IDE surface. --> Editing a past user message creates a fork — original conversation kept, branch starts from the edited turn.
+- [~] **T-1303 — Checkpoints.** <!-- core done 2026-05-31: ConversationStore.recordCheckpoint (metadata only — phase, turnIndex, changedFiles manifest, opaque workState snapshot; no file blobs, retention-capped at fold) + planRewind (pure, non-mutating: returns messagesToKeep/Drop + changedFiles + workState + warnings). Core has no file-restore authority — the IDE consumes the plan and restores files via its own VCS/undo. The auto-checkpoint trigger lives at the AgentDriver phase boundary (IDE-wired); the rewind button is the IDE surface. ADR-008. --> Multi-step agent runs auto-checkpoint at phase boundaries. User can "rewind to checkpoint" — restores conversation state + file state.
 - [ ] **T-1304 — Statusbar widget — index status.** "Indexing 4,238 / 21,500 files…" or "Index ready · 21k files · last update 2m ago."
 - [ ] **T-1305 — Abortable streaming refinements.** Stop button works during embedding, during MCP tool call, during external-session-watcher.
 - [ ] **T-1306 — Pull-up slot.** Any T-XXX items deferred from Sprints 5-12 (gear panel for codex/gemini if cut from S12, T-704 inline scope if cut from S7, etc.) land here.
-- [ ] **T-1307 — Workspace Guidelines.** Editable `.event4u-agent/guidelines.md` per workspace — content is prepended to system prompt (Augment-style + agent-config rule-compat).
+- [~] **T-1307 — Workspace Guidelines.** <!-- core done 2026-05-31: packages/core/src/guidelines/ — GuidelinesStore (InMemory+File) load/save of .event4u-agent/guidelines.md (fail-open: missing file → ''), composeSystemPrompt(base, guidelines) prepends a delimited <workspace-guidelines> block ahead of the base system prompt, size-capped to 16KB with a truncation marker so an accidental huge paste can't blow up every request. 8 new tests. The editor UI + wiring composeSystemPrompt into the live request builder are IDE surfaces (stays [~]). --> Editable `.event4u-agent/guidelines.md` per workspace — content is prepended to system prompt (Augment-style + agent-config rule-compat).
 - [ ] **T-1308 — Context display sidebar (SweepAI ContextSideBar pattern).** Now that the Context Engine (Phase 6/8) retrieves snippets, the user needs to *see and manage* what is in context. Port SweepAI's `ContextSideBar` + `SnippetBadge` UX (`sweep_chat/components/shared/`): a panel listing the current-turn context snippets, each rendered as a badge with **score→opacity** (faded = lower relevance), **type→colour** (source/test/docs/dependency), path basename + `:start-end` range, a hover-preview of the slice, and a remove affordance. A search input streams a retrieval query and lets the user explicitly add a result snippet (set its score to 1). Snippets render off the `Message.annotations` contract (`road-to-mvp-ui-design.md` § Data + render contract). IDE-local: clicking a badge opens the file at the line range (not a GitHub blob URL). Both surfaces.
 
 **Baseline (P50):** 3 weeks (this sprint absorbs slip).
@@ -247,6 +247,20 @@ complexity: heavy
 - [ ] Persisted history works across IDE restarts.
 - [ ] Conversation forking + checkpoints visible in UI.
 - [ ] All deferred T-XXX from earlier sprints landed or explicitly punted to v1.5.
+
+> **Phase 13 status (2026-05-31):** the pure-**core** of the chat-state cluster
+> landed on `feat/road-to-v1-0-phase-13` — `packages/core/src/chat/` (persisted
+> history T-1301, copy-on-write forking T-1302, metadata-only checkpoints +
+> non-mutating rewind plan T-1303) and `packages/core/src/guidelines/`
+> (workspace guidelines T-1307). 53 new unit tests; full core suite 642 pass /
+> 1 skipped. Design ratified by AI council (codex/gpt-5.5 + gemini-2.5-pro):
+> append-only JSONL event log over a rewritten doc, fork is copy-on-write (never
+> an in-file branch tree), checkpoints are metadata + a rewind *plan* (core has
+> no file-restore authority — the IDE restores via its own VCS/undo), token-AND
+> search over BM25 coupling for the first slice. **ADR-008** records the design.
+> T-1301/1302/1303/1307 stay `[~]` — the sidebar list, fork affordance, rewind
+> button, guidelines editor, and the auto-checkpoint AgentDriver wiring are IDE
+> surfaces. T-1304/1305/1306/1308 + the exit gate stay `[ ]` (IDE-runtime).
 
 ---
 
