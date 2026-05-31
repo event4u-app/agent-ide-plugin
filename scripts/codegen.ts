@@ -208,11 +208,12 @@ const classes: DataClass[] = [
   },
   {
     name: 'ChatSendRequest',
-    doc: 'Start a streamed chat turn. scope (per-turn retrieval) is TS-only for the slice.',
+    doc: 'Start a streamed chat turn. scope = per-turn retrieval (T-PRD09); honoured once context injection lands.',
     fields: [
       { name: 'conversationId', kotlinType: 'String' },
       { name: 'message', kotlinType: 'String' },
       { name: 'providerId', kotlinType: 'String?', default: 'null' },
+      { name: 'scope', kotlinType: 'ContextScope?', default: 'null' },
     ],
   },
   {
@@ -324,6 +325,19 @@ const sealedUnions: SealedUnion[] = [
     ],
   },
   {
+    name: 'ContextScope',
+    doc: 'Per-turn retrieval scope the composer chips emit (T-PRD09); carried by ChatSendRequest.scope.',
+    variants: [
+      { kind: 'all', className: 'ContextScopeAll', fields: [] },
+      {
+        kind: 'roots',
+        className: 'ContextScopeRoots',
+        fields: [{ name: 'rootIds', kotlinType: 'List<String>' }],
+      },
+      { kind: 'none', className: 'ContextScopeNone', fields: [] },
+    ],
+  },
+  {
     name: 'ToolCallEvent',
     doc: 'The tool-call lifecycle union the IDE renders as approval / diff / result cards.',
     variants: [
@@ -388,6 +402,16 @@ function emitClass(dc: DataClass): string {
 
 function emitVariant(union: SealedUnion, variant: Variant): string {
   const doc = variant.doc ? `/** ${variant.doc} */\n` : '';
+  // A zero-field variant becomes a serializable `object` — a Kotlin `data
+  // class` requires at least one parameter, and a singleton is the right shape
+  // for a payload-less union member (e.g. ContextScope `all` / `none`).
+  if (variant.fields.length === 0) {
+    return [
+      `${doc}@Serializable`,
+      `@SerialName("${variant.kind}")`,
+      `object ${variant.className} : ${union.name}`,
+    ].join('\n');
+  }
   return [
     `${doc}@Serializable`,
     `@SerialName("${variant.kind}")`,
