@@ -275,6 +275,41 @@ chat history, index a target repo BM25-only vs hybrid, compare MRR / Recall@10.
 - 2026-MM-DD · Vertical slice verified by <name> · IDE <vscode|phpstorm> · stream ✓ stop ✓ cost ✓
 ```
 
+## Product readiness Phase 1 — tool-call / diff / terminal cards (IDE render)
+
+> The pure-core foundation shipped under unit tests + CI: the `ToolCallEvent`
+> union + `ToolReview` diff payload (`packages/protocol/src/schema.ts`), the
+> `runToolCallWithApproval` orchestrator (`packages/core/src/agent/approval.ts`),
+> the `planToReview` diff mapper (`packages/core/src/tools/review.ts`), and the
+> Kotlin sealed classes for `TerminalEvent` + `ToolCallEvent`
+> (`scripts/codegen.ts` → `Protocol.kt`). ADR-013 records the design. The items
+> below are the **deferred render halves** — they need a running IDE and a wired
+> agent turn (the transport is intentionally not built yet, ADR-013 fork 5), so
+> they stay `[~]` until both land and a human signs the row.
+
+### T-PRD01 — tool-call action cards
+
+- [ ] A `started` event renders a card with the tool name + `argsPreview`; an `approvalRequested` renders `allow once / allow always / deny` wired to the orchestrator's injected `decide`; `approvalResolved` / `result` / `error` update the card. VS Code webview + JetBrains Swing.
+- [ ] A hard-floor command surfaces the `error` event ("blocked by hard floor") with no approve control.
+
+### T-PRD02 — multi-file diff review
+
+- [ ] An `approvalRequested` carrying `review.kind === 'diff'` renders a per-file diff (from `planToReview`) the user accepts/rejects before the write applies; rejection rolls back atomically (core `WriteFilesTool.apply` already does).
+
+### T-PRD04 — streamed event union → client renderers
+
+- [ ] The Kotlin client decodes `ToolCallEvent` / `TerminalEvent` polymorphically (`Json { ignoreUnknownKeys = true }` + `@JsonClassDiscriminator("kind")`) and the VS Code render switch handles every `kind` exhaustively.
+
+### T-PRD03 — terminal card render (xterm.js)
+
+- [ ] The shipped `terminal/` core (ring-buffer replay, waiting-for-input, first-write-wins) renders via xterm.js in both surfaces (completes road-to-v1-0 T-904/906/907/908). Core done since Phase 9; this is pure render.
+
+### Record the result
+
+```
+- 2026-MM-DD · Product-readiness Phase 1 cards verified by <name> · IDE <vscode|phpstorm> · approval ✓ diff ✓ terminal ✓
+```
+
 ## Verification log
 
 > Append entries below. Newest at the top. One line per verification, signed by the human who walked the list.
