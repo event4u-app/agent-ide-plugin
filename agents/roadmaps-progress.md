@@ -6,10 +6,10 @@
 
 ## Overall
 
-**137 / 279 steps done · 49%**
+**137 / 275 steps done · 50%**
 
 ```text
-███████████████████░░░░░░░░░░░░░░░░░░░░░   49%
+████████████████████░░░░░░░░░░░░░░░░░░░░   50%
 ```
 
 ## Open roadmaps
@@ -21,7 +21,7 @@
 | 3 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 7 | 67 | 48 | 18 | 0 | 1 | ███░░░░░░░ 27% |
 | 4 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 18 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
 | 5 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 35 | 5 | 0 | ██████░░░░ 56% |
-| 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 56 | 40 | 26 | 0 | ████░░░░░░ 42% |
+| 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 52 | 40 | 30 | 0 | ████░░░░░░ 43% |
 
 ---
 
@@ -89,7 +89,7 @@
 
 ### [road-to-v1-0.md](roadmaps/road-to-v1-0.md)
 
-**v1.0 — Internal alpha, dogfood it** — 40 / 96 done (42%)
+**v1.0 — Internal alpha, dogfood it** — 40 / 92 done (43%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
@@ -101,7 +101,7 @@
 | 10 | Native IDE depth (SweepAI-style) (3 weeks, moved from S9) | ⬜ not started | 11 | 0 | 0 | 0 | 0% |
 | 11 | MCP client + full agent-config coverage (3 weeks) | ✅ done | 0 | 5 | 5 | 0 | 100% |
 | 12 | Per-CLI gear panel + Unified Session Browser (2 weeks) | 🟡 in progress | 5 | 1 | 3 | 0 | 17% |
-| 13 | UX polish + late-arriving items (3 weeks) | ⬜ not started | 11 | 0 | 0 | 0 | 0% |
+| 13 | UX polish + late-arriving items (3 weeks) | 🟡 in progress | 7 | 0 | 4 | 0 | 0% |
 | 14 | Pricing Book signing + Telemetry + Docs (3 weeks) | 🟡 in progress | 3 | 7 | 2 | 0 | 70% |
 | 15 | Buffer + Beta Release (2-3 weeks) | ⬜ not started | 14 | 0 | 0 | 0 | 0% |
 
