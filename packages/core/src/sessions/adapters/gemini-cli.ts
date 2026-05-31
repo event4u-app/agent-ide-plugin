@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { throwIfAborted } from '../../abort.js';
 import { LARGE_FILE_BYTES } from '../jsonl-scan.js';
 import {
   clampTitle,
@@ -106,7 +107,11 @@ export class GeminiCliAdapter implements SessionAdapter {
 
   constructor(private readonly sessionsDir: string | undefined) {}
 
-  async listSummaries(options?: SessionListOptions): Promise<SessionScanResult> {
+  async listSummaries(
+    options?: SessionListOptions,
+    signal?: AbortSignal,
+  ): Promise<SessionScanResult> {
+    throwIfAborted(signal);
     const diagnostics: SessionDiagnostic[] = [];
     if (!this.sessionsDir) {
       diagnostics.push({
@@ -125,6 +130,7 @@ export class GeminiCliAdapter implements SessionAdapter {
 
     const summaries: SessionSummary[] = [];
     for (const file of files) {
+      throwIfAborted(signal);
       if (file.sizeBytes > LARGE_FILE_BYTES) {
         summaries.push(degradedSummary({ source: this.source, file, provider: PROVIDER }));
         diagnostics.push({
@@ -179,8 +185,9 @@ export class GeminiCliAdapter implements SessionAdapter {
     return { summaries: filtered, diagnostics };
   }
 
-  async loadMessages(ref: SessionRef): Promise<NormalizedMessage[]> {
+  async loadMessages(ref: SessionRef, signal?: AbortSignal): Promise<NormalizedMessage[]> {
     if (!ref.rawFilePath) return [];
+    throwIfAborted(signal);
     try {
       const records = recordsFrom(await readFile(ref.rawFilePath, 'utf8'));
       return records

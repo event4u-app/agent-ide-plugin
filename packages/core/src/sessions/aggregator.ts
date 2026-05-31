@@ -1,3 +1,4 @@
+import { isAbortError, throwIfAborted } from '../abort.js';
 import { ApiSessionAdapter } from './adapters/api.js';
 import { AiderAdapter } from './adapters/aider.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.js';
@@ -41,15 +42,22 @@ export class SessionBrowser {
   ) {}
 
   /** Scan every source, merge, stamp provenance, sort by `lastMessageAt` desc. */
-  async listSummaries(options?: SessionListOptions): Promise<SessionScanResult> {
+  async listSummaries(
+    options?: SessionListOptions,
+    signal?: AbortSignal,
+  ): Promise<SessionScanResult> {
+    throwIfAborted(signal);
     const summaries: SessionSummary[] = [];
     const diagnostics: SessionDiagnostic[] = [];
 
     const results = await Promise.all(
       this.adapters.map(async (adapter): Promise<SessionScanResult> => {
         try {
-          return await adapter.listSummaries(options);
+          return await adapter.listSummaries(options, signal);
         } catch (error) {
+          // Fail-open degrades genuine parse/IO errors to a diagnostic — but an
+          // abort is user intent (Stop), so it must propagate, not be swallowed.
+          if (isAbortError(error)) throw error;
           return {
             summaries: [],
             diagnostics: [
@@ -75,9 +83,9 @@ export class SessionBrowser {
   }
 
   /** Full normalized read of one session, routed to its source adapter. */
-  async loadMessages(ref: SessionRef): Promise<NormalizedMessage[]> {
+  async loadMessages(ref: SessionRef, signal?: AbortSignal): Promise<NormalizedMessage[]> {
     const adapter = this.adapters.find((a) => a.source === ref.source);
-    return adapter ? adapter.loadMessages(ref) : [];
+    return adapter ? adapter.loadMessages(ref, signal) : [];
   }
 }
 

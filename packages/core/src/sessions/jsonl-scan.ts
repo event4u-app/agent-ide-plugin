@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { throwIfAborted } from '../abort.js';
 import {
   type DiscoveredFile,
   clampTitle,
@@ -58,9 +59,11 @@ export async function scanJsonlSource(args: {
   match: (name: string) => boolean;
   mapper: SessionMapper;
   options?: SessionListOptions;
+  signal?: AbortSignal;
 }): Promise<SessionScanResult> {
-  const { source, root, provider, match, mapper, options } = args;
+  const { source, root, provider, match, mapper, options, signal } = args;
   const diagnostics: SessionDiagnostic[] = [];
+  throwIfAborted(signal);
 
   if (!root) {
     diagnostics.push({
@@ -79,6 +82,8 @@ export async function scanJsonlSource(args: {
 
   const summaries: SessionSummary[] = [];
   for (const file of files) {
+    // Cooperative checkpoint: a Stop interrupts a long multi-file walk (council E1).
+    throwIfAborted(signal);
     if (file.sizeBytes > LARGE_FILE_BYTES) {
       summaries.push(degradedSummary({ source, file, provider }));
       diagnostics.push({
@@ -177,7 +182,9 @@ async function summarizeFile(args: {
 export async function loadJsonlMessages(
   filePath: string,
   mapper: MessageMapper,
+  signal?: AbortSignal,
 ): Promise<NormalizedMessage[]> {
+  throwIfAborted(signal);
   let content: string;
   try {
     content = await readFile(filePath, 'utf8');

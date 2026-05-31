@@ -131,8 +131,12 @@ export const DEFAULT_SESSION_LIMIT = 500;
  */
 export interface SessionAdapter {
   readonly source: SessionSource;
-  /** Cheap scan → summaries + diagnostics. MUST NOT throw on a bad file; degrade instead. */
-  listSummaries(options?: SessionListOptions): Promise<SessionScanResult>;
+  /**
+   * Cheap scan → summaries + diagnostics. MUST NOT throw on a bad file; degrade
+   * instead. The one exception is an abort: when `signal` fires the scan rejects
+   * with an `AbortError` so a Stop can interrupt a long multi-file walk (T-1305).
+   */
+  listSummaries(options?: SessionListOptions, signal?: AbortSignal): Promise<SessionScanResult>;
   /** Full normalized read of a single session (resume/preview). */
-  loadMessages(ref: SessionRef): Promise<NormalizedMessage[]>;
+  loadMessages(ref: SessionRef, signal?: AbortSignal): Promise<NormalizedMessage[]>;
 }

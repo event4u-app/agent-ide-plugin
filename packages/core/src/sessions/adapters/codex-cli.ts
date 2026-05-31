@@ -109,7 +109,7 @@ export class CodexCliAdapter implements SessionAdapter {
 
   constructor(private readonly sessionsDir: string | undefined) {}
 
-  listSummaries(options?: SessionListOptions): Promise<SessionScanResult> {
+  listSummaries(options?: SessionListOptions, signal?: AbortSignal): Promise<SessionScanResult> {
     return scanJsonlSource({
       source: this.source,
       root: this.sessionsDir,
@@ -117,12 +117,13 @@ export class CodexCliAdapter implements SessionAdapter {
       match: jsonlMatch,
       mapper: mapSummary,
       options,
+      signal,
     });
   }
 
-  async loadMessages(ref: SessionRef): Promise<NormalizedMessage[]> {
+  async loadMessages(ref: SessionRef, signal?: AbortSignal): Promise<NormalizedMessage[]> {
     if (!ref.rawFilePath) return [];
-    return loadJsonlMessages(ref.rawFilePath, mapMessages);
+    return loadJsonlMessages(ref.rawFilePath, mapMessages, signal);
   }
 }
 
