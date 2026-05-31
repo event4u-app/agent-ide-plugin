@@ -310,6 +310,42 @@ chat history, index a target repo BM25-only vs hybrid, compare MRR / Recall@10.
 - 2026-MM-DD · Product-readiness Phase 1 cards verified by <name> · IDE <vscode|phpstorm> · approval ✓ diff ✓ terminal ✓
 ```
 
+## Product readiness Phase 2 — trust & control (IDE render)
+
+> Pure-core foundation shipped under unit tests + CI (ADR-014): the permission
+> audit log + derived risk badge (`permissions/audit.ts`, `classifyRisk`), the
+> `DailyBudgetTracker` + `cost` settings key (`cost/budget.ts`), the agent-mode
+> → directive-set map (`agent/modes.ts`), and the `ContextScope` Kotlin sealed
+> classes (`scripts/codegen.ts`). The items below are the **deferred render +
+> wiring halves** — they need a running IDE (and, for budget/scope, the turn
+> wiring), so they stay `[~]` until they land and a human signs the row.
+
+### T-PRD05 — permission cards (risk badge + audit link)
+
+- [ ] An `approvalRequested` card shows the risk badge (`classifyRisk` → low/medium/high), `allow once / allow always / deny`, and a link that opens the matching `audit-<date>.jsonl` entry; always-rules persist per workspace.
+
+### T-PRD06 — cost UX (pre-send / live / budget warning)
+
+- [ ] The composer shows the pre-send estimate range (`formatEstimate`), a live counter, and the reconciled final; a configured `cost.daily_budget_usd` surfaces a soft warning once `DailyBudgetTracker` reports `warning` (default 80%). Requires the handler→budget wiring (deferred this slice) + render.
+
+### T-PRD07 — index statusbar (pure IDE)
+
+- [ ] A statusbar widget polls `rootStatus` and renders `Indexing N / M…` / `Index ready · N files`, per-root errors, and a Reindex action. Zero core change — the protocol already exposes everything.
+
+### T-PRD08 — agent mode selector
+
+- [ ] The composer exposes the mode selector (`MODE_DIRECTIVES` labels); the chosen `AgentMode` is visible and flows to the driver, which runs only that mode's `DirectiveSet.phases`. Requires the mode→driver wiring (deferred) + UI.
+
+### T-PRD09 — per-turn context chips
+
+- [ ] Composer chips emit the `ContextScope` (`all` / `roots` / `none`) the Kotlin client now decodes; the turn actually honours the scope (context injection — Phase C).
+
+### Record the result
+
+```
+- 2026-MM-DD · Product-readiness Phase 2 verified by <name> · IDE <vscode|phpstorm> · perm ✓ cost ✓ index ✓ mode ✓ scope ✓
+```
+
 ## Verification log
 
 > Append entries below. Newest at the top. One line per verification, signed by the human who walked the list.
