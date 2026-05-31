@@ -48,6 +48,8 @@ interface Pending {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  /** Detach the per-request abort listener (no-op when the call had no signal). */
+  cleanup: () => void;
 }
 
 export class McpClient {
@@ -96,8 +98,8 @@ export class McpClient {
     return this.initialized && this.dead === undefined;
   }
 
-  async listTools(): Promise<McpTool[]> {
-    const raw = await this.request('tools/list', {}, this.requestTimeoutMs);
+  async listTools(signal?: AbortSignal): Promise<McpTool[]> {
+    const raw = await this.request('tools/list', {}, this.requestTimeoutMs, signal);
     const parsed = ListToolsResultSchema.safeParse(raw);
     if (!parsed.success) {
       throw new McpClientError('mcp tools/list result malformed', parsed.error);
@@ -105,11 +107,12 @@ export class McpClient {
     return parsed.data.tools;
   }
 
-  async callTool(name: string, args: unknown): Promise<CallToolResult> {
+  async callTool(name: string, args: unknown, signal?: AbortSignal): Promise<CallToolResult> {
     const raw = await this.request(
       'tools/call',
       { name, arguments: args ?? {} },
       this.requestTimeoutMs,
+      signal,
     );
     const parsed = CallToolResultSchema.safeParse(raw);
     if (!parsed.success) {
@@ -123,25 +126,52 @@ export class McpClient {
     await this.transport.close();
   }
 
-  private async request(method: string, params: unknown, timeoutMs: number): Promise<unknown> {
+  private async request(
+    method: string,
+    params: unknown,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     if (this.dead) throw new McpClientError(`mcp client is dead: ${this.dead.message}`, this.dead);
+    // Already-aborted: fail fast with the standard AbortError before sending.
+    signal?.throwIfAborted();
     const id = this.nextId++;
     const message = { jsonrpc: JSONRPC_VERSION as typeof JSONRPC_VERSION, id, method, params };
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(id);
+        this.settle(id);
         reject(new McpClientError(`mcp request '${method}' timed out after ${timeoutMs}ms`));
       }, timeoutMs);
       if (typeof timer.unref === 'function') timer.unref();
-      this.pending.set(id, { resolve, reject, timer });
+
+      // Abort cancels only THIS in-flight request; the client stays alive so
+      // later / concurrent calls still work (council C1, mirroring the timeout).
+      let cleanup = (): void => undefined;
+      if (signal) {
+        const onAbort = (): void => {
+          this.settle(id);
+          reject(signal.reason instanceof Error ? signal.reason : new McpClientError('aborted'));
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+        cleanup = (): void => signal.removeEventListener('abort', onAbort);
+      }
+
+      this.pending.set(id, { resolve, reject, timer, cleanup });
       this.transport.send(message).catch((err) => {
-        const slot = this.pending.get(id);
-        if (!slot) return;
-        clearTimeout(slot.timer);
-        this.pending.delete(id);
+        if (!this.pending.has(id)) return;
+        this.settle(id);
         reject(new McpClientError(`mcp request '${method}' send failed`, err));
       });
     });
+  }
+
+  /** Clear a pending request's timer + abort listener and drop it from the map. */
+  private settle(id: number): void {
+    const slot = this.pending.get(id);
+    if (!slot) return;
+    clearTimeout(slot.timer);
+    slot.cleanup();
+    this.pending.delete(id);
   }
 
   private async notify(method: string, params?: unknown): Promise<void> {
@@ -154,8 +184,7 @@ export class McpClient {
     if (typeof response.id !== 'number') return;
     const slot = this.pending.get(response.id);
     if (!slot) return;
-    clearTimeout(slot.timer);
-    this.pending.delete(response.id);
+    this.settle(response.id);
     if (response.error) {
       slot.reject(
         new McpClientError(`mcp error ${response.error.code}: ${response.error.message}`),
@@ -175,6 +204,7 @@ export class McpClient {
     this.initialized = false;
     for (const [, slot] of this.pending) {
       clearTimeout(slot.timer);
+      slot.cleanup();
       slot.reject(error);
     }
     this.pending.clear();
