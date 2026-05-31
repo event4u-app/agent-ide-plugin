@@ -107,7 +107,13 @@ export const PermissionFileSchema = z.object({
 });
 export type PermissionFile = z.infer<typeof PermissionFileSchema>;
 
-const EMPTY_FILE: PermissionFile = { version: 1, always: [] };
+// Factory, NOT a shared const: `grantAlways` mutates `this.file.always` in
+// place, so a single shared object would leak grants across every gate
+// instance that started from it (a real cross-instance leak for an in-memory
+// gate). Each caller gets its own fresh array.
+function emptyFile(): PermissionFile {
+  return { version: 1, always: [] };
+}
 
 export interface GateOptions {
   /** File path for "always" persistence; absent → in-memory only. */
@@ -119,7 +125,7 @@ export interface GateOptions {
 }
 
 export class PermissionGate {
-  private file: PermissionFile = EMPTY_FILE;
+  private file: PermissionFile = emptyFile();
   private loaded = false;
   private readonly classifications: Record<string, ToolClassification>;
   private readonly hardFloorPatterns: RegExp[];
@@ -184,11 +190,11 @@ export class PermissionGate {
     if (!this.opts.filePath) return;
     const raw = await readFile(this.opts.filePath, 'utf8').catch(() => undefined);
     if (raw === undefined) {
-      this.file = EMPTY_FILE;
+      this.file = emptyFile();
       return;
     }
     const parsed = PermissionFileSchema.safeParse(JSON.parse(raw));
-    this.file = parsed.success ? parsed.data : EMPTY_FILE;
+    this.file = parsed.success ? parsed.data : emptyFile();
   }
 
   private async persist(): Promise<void> {

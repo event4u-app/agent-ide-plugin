@@ -22,6 +22,14 @@ const repoRoot = join(__dirname, '..');
 type Field = { name: string; kotlinType: string; default?: string };
 type DataClass = { name: string; fields: Field[]; doc?: string };
 
+// A discriminated union → a Kotlin sealed interface + one @SerialName subclass
+// per variant, decoded polymorphically on the `kind` wire field via
+// @JsonClassDiscriminator. Narrow by design (per AI council 2026-05-31): only
+// `kind`-discriminated unions of flat serializable subclasses — NOT a generic
+// Zod→Kotlin compiler.
+type Variant = { kind: string; className: string; fields: Field[]; doc?: string };
+type SealedUnion = { name: string; variants: Variant[]; doc?: string };
+
 const KOTLIN_PACKAGE = 'de.event4u.agent.protocol';
 
 const classes: DataClass[] = [
@@ -232,25 +240,187 @@ const classes: DataClass[] = [
     name: 'ChatCancelResponse',
     fields: [{ name: 'cancelled', kotlinType: 'Boolean' }],
   },
+
+  // --- tool-call review payload (product-readiness Phase 1, T-PRD02) ---
+  {
+    name: 'ReviewFile',
+    doc: 'One file in a multi-file diff the user reviews before it is written.',
+    fields: [
+      { name: 'path', kotlinType: 'String' },
+      { name: 'diff', kotlinType: 'String' },
+      { name: 'isNewFile', kotlinType: 'Boolean' },
+    ],
+  },
+  {
+    name: 'ToolReview',
+    doc: 'Structured review payload on an approvalRequested event. kind is always "diff" today.',
+    fields: [
+      { name: 'kind', kotlinType: 'String' },
+      { name: 'files', kotlinType: 'List<ReviewFile>' },
+    ],
+  },
 ];
+
+// Discriminated unions → Kotlin sealed hierarchies (T-PRD04). TerminalEvent
+// completes the deferred ADR-009 sealed class; ToolCallEvent is the new
+// tool-call lifecycle the IDE renders as approval / diff / result cards.
+const sealedUnions: SealedUnion[] = [
+  {
+    name: 'TerminalEvent',
+    doc: 'The typed event union streamed on the terminalSubscribe channel (Phase 9).',
+    variants: [
+      {
+        kind: 'output',
+        className: 'TerminalOutputEvent',
+        fields: [
+          { name: 'commandId', kotlinType: 'String' },
+          { name: 'chunk', kotlinType: 'OutputChunk' },
+        ],
+      },
+      {
+        kind: 'status',
+        className: 'TerminalStatusEvent',
+        fields: [
+          { name: 'commandId', kotlinType: 'String' },
+          { name: 'status', kotlinType: 'String' },
+        ],
+      },
+      {
+        kind: 'inputRequested',
+        className: 'TerminalInputRequestedEvent',
+        fields: [
+          { name: 'commandId', kotlinType: 'String' },
+          { name: 'pending', kotlinType: 'PendingInput' },
+        ],
+      },
+      {
+        kind: 'inputConflict',
+        className: 'TerminalInputConflictEvent',
+        fields: [
+          { name: 'commandId', kotlinType: 'String' },
+          { name: 'inputRequestId', kotlinType: 'String' },
+          { name: 'winningSurfaceId', kotlinType: 'String' },
+          { name: 'losingSurfaceId', kotlinType: 'String' },
+        ],
+      },
+      {
+        kind: 'exit',
+        className: 'TerminalExitEvent',
+        fields: [
+          { name: 'commandId', kotlinType: 'String' },
+          { name: 'exitCode', kotlinType: 'Int' },
+          { name: 'signal', kotlinType: 'Int?', default: 'null' },
+          { name: 'durationMs', kotlinType: 'Int' },
+        ],
+      },
+      {
+        kind: 'error',
+        className: 'TerminalErrorEvent',
+        fields: [
+          { name: 'commandId', kotlinType: 'String' },
+          { name: 'message', kotlinType: 'String' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'ToolCallEvent',
+    doc: 'The tool-call lifecycle union the IDE renders as approval / diff / result cards.',
+    variants: [
+      {
+        kind: 'started',
+        className: 'ToolCallStarted',
+        fields: [
+          { name: 'id', kotlinType: 'String' },
+          { name: 'name', kotlinType: 'String' },
+          { name: 'argsPreview', kotlinType: 'String' },
+        ],
+      },
+      {
+        kind: 'approvalRequested',
+        className: 'ToolCallApprovalRequested',
+        fields: [
+          { name: 'id', kotlinType: 'String' },
+          { name: 'level', kotlinType: 'String' },
+          { name: 'riskReason', kotlinType: 'String?', default: 'null' },
+          { name: 'review', kotlinType: 'ToolReview?', default: 'null' },
+        ],
+      },
+      {
+        kind: 'approvalResolved',
+        className: 'ToolCallApprovalResolved',
+        fields: [
+          { name: 'id', kotlinType: 'String' },
+          { name: 'decision', kotlinType: 'String' },
+        ],
+      },
+      {
+        kind: 'result',
+        className: 'ToolCallResult',
+        fields: [
+          { name: 'id', kotlinType: 'String' },
+          { name: 'ok', kotlinType: 'Boolean' },
+          { name: 'outputPreview', kotlinType: 'String' },
+        ],
+      },
+      {
+        kind: 'error',
+        className: 'ToolCallErrorEvent',
+        fields: [
+          { name: 'id', kotlinType: 'String' },
+          { name: 'message', kotlinType: 'String' },
+        ],
+      },
+    ],
+  },
+];
+
+function emitFields(fields: Field[]): string {
+  return fields
+    .map((f) => `    val ${f.name}: ${f.kotlinType}${f.default ? ` = ${f.default}` : ''},`)
+    .join('\n');
+}
 
 function emitClass(dc: DataClass): string {
   const doc = dc.doc ? `/** ${dc.doc} */\n` : '';
-  const fields = dc.fields
-    .map((f) => `    val ${f.name}: ${f.kotlinType}${f.default ? ` = ${f.default}` : ''},`)
-    .join('\n');
-  return `${doc}@Serializable\ndata class ${dc.name}(\n${fields}\n)`;
+  return `${doc}@Serializable\ndata class ${dc.name}(\n${emitFields(dc.fields)}\n)`;
+}
+
+function emitVariant(union: SealedUnion, variant: Variant): string {
+  const doc = variant.doc ? `/** ${variant.doc} */\n` : '';
+  return [
+    `${doc}@Serializable`,
+    `@SerialName("${variant.kind}")`,
+    `data class ${variant.className}(`,
+    emitFields(variant.fields),
+    `) : ${union.name}`,
+  ].join('\n');
+}
+
+function emitSealed(union: SealedUnion): string {
+  const doc = union.doc ? `/** ${union.doc} */\n` : '';
+  // @JsonClassDiscriminator pins the wire discriminator to `kind` for this
+  // hierarchy only, so a plain Json { ignoreUnknownKeys = true } decodes it
+  // without a module-wide classDiscriminator override.
+  const parent = `${doc}@Serializable\n@JsonClassDiscriminator("kind")\nsealed interface ${union.name}`;
+  const variants = union.variants.map((v) => emitVariant(union, v)).join('\n\n');
+  return `${parent}\n\n${variants}`;
 }
 
 const header = `// GENERATED by scripts/codegen.ts — DO NOT EDIT BY HAND.
 // Source of truth: packages/protocol/src/schema.ts
+@file:OptIn(ExperimentalSerializationApi::class)
+
 package ${KOTLIN_PACKAGE}
 
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.json.JsonElement
 `;
 
-const body = classes.map(emitClass).join('\n\n');
+const body = [...classes.map(emitClass), ...sealedUnions.map(emitSealed)].join('\n\n');
 const out = `${header}\n${body}\n`;
 
 const target = join(
@@ -262,4 +432,7 @@ const target = join(
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, out, 'utf8');
 
-process.stdout.write(`codegen: wrote ${classes.length} DTOs -> ${target}\n`);
+const sealedClassCount = sealedUnions.reduce((n, u) => n + 1 + u.variants.length, 0);
+process.stdout.write(
+  `codegen: wrote ${classes.length} DTOs + ${sealedClassCount} sealed types -> ${target}\n`,
+);
