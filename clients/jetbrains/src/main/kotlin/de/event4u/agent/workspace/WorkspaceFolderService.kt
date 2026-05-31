@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootEvent
 import com.intellij.openapi.roots.ModuleRootListener
 import de.event4u.agent.SidecarClient
+import de.event4u.agent.SidecarLocator
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -75,10 +76,7 @@ class WorkspaceFolderService(private val project: Project) : Disposable {
         sidecar = null
     }
 
-    private fun resolveSidecarPath(): String {
-        val base = project.basePath ?: "."
-        return "$base/packages/core/dist/server.js"
-    }
+    private fun resolveSidecarPath(): String = SidecarLocator.locate(project.basePath)
 
     companion object {
         fun getInstance(project: Project) = project.getService(WorkspaceFolderService::class.java)

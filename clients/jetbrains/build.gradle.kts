@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "de.event4u.agent"
-version = "0.0.0"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
@@ -36,6 +36,21 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// T-PRD11 — bundle the Agent Core sidecar into the plugin distribution so an
+// installed plugin ZIP runs with NO repo checkout. `SidecarPathResolver` looks
+// for `<pluginPath>/sidecar/server.js`; `prepareSandbox` (which `buildPlugin`
+// zips) places it there. The directory `from` is tolerant of a missing source:
+// the `check`-only CI job does not build the Node core, so it produces a plugin
+// without the sidecar (fine — it asserts nothing about it); the `package` job
+// builds the core first, so the ZIP carries `server.js`. AI council Fork 3A,
+// ADR-017.
+tasks.named<org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask>("prepareSandbox") {
+    from(layout.projectDirectory.dir("../../packages/core/dist")) {
+        include("server.js")
+        into(pluginName.map { "$it/sidecar" })
+    }
 }
 
 intellijPlatform {
