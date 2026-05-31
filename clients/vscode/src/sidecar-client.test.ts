@@ -36,4 +36,14 @@ describeIfBuilt('SidecarClient against the real sidecar', () => {
     const res = await client.request('frobnicate', {});
     expect(res.messageType).toBe('error');
   });
+
+  it('requestStream resolves the terminal envelope (no token frames for a one-shot method)', async () => {
+    const tokens: unknown[] = [];
+    const terminal = await client.requestStream('echo', { text: 'streamed' }, (frame) =>
+      tokens.push(frame),
+    );
+    expect(terminal.done).toBe(true);
+    expect(terminal.data).toEqual({ text: 'streamed' });
+    expect(tokens).toEqual([]);
+  });
 });

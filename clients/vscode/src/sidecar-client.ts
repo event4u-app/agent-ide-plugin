@@ -12,22 +12,37 @@ import { NdjsonParser, encodeEnvelope } from '@event4u-agent/shared';
  */
 export class SidecarClient {
   private child: ChildProcessWithoutNullStreams | undefined;
+  /** One-shot request/response correlations — deleted on the first reply. */
   private readonly pending = new Map<string, (envelope: Envelope) => void>();
+  /**
+   * Streaming correlations — invoked for EVERY envelope of a `messageId` and
+   * self-deleting on the terminal `done:true`. Checked before {@link pending}
+   * so a streamed `done:false` token never consumes the one-shot path.
+   */
+  private readonly streaming = new Map<string, (envelope: Envelope) => void>();
   private parser: NdjsonParser | undefined;
 
   /** node executable used to run the sidecar (override in tests). */
   constructor(
     private readonly serverPath: string,
     private readonly nodePath: string = process.execPath,
+    /** Extra env for the spawned sidecar (e.g. ANTHROPIC_API_KEY); merged over `process.env`. */
+    private readonly env: NodeJS.ProcessEnv = {},
   ) {}
 
   start(): void {
     if (this.child) return;
     const child = spawn(this.nodePath, [this.serverPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, ...this.env },
     });
     this.child = child;
     this.parser = new NdjsonParser((envelope) => {
+      const stream = this.streaming.get(envelope.messageId);
+      if (stream) {
+        stream(envelope);
+        return;
+      }
       const resolve = this.pending.get(envelope.messageId);
       if (resolve) {
         this.pending.delete(envelope.messageId);
@@ -59,6 +74,41 @@ export class SidecarClient {
     });
   }
 
+  /**
+   * Send a streaming request. `onToken` fires for each intermediate
+   * `done:false` envelope; the promise resolves with the terminal `done:true`
+   * envelope. Used by `chatSend`, whose tokens arrive as `done:false` frames.
+   */
+  requestStream(
+    messageType: string,
+    data: unknown,
+    onToken: (envelope: Envelope) => void,
+    timeoutMs = 120_000,
+  ): Promise<Envelope> {
+    if (!this.child) throw new Error('sidecar not started');
+    const messageId = randomUUID();
+    const envelope: Envelope = { messageId, messageType, data, done: true };
+
+    return new Promise<Envelope>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.streaming.delete(messageId);
+        reject(new Error(`sidecar stream timed out: ${messageType}`));
+      }, timeoutMs);
+
+      this.streaming.set(messageId, (frame) => {
+        if (frame.done) {
+          clearTimeout(timer);
+          this.streaming.delete(messageId);
+          resolve(frame);
+        } else {
+          onToken(frame);
+        }
+      });
+
+      this.child!.stdin.write(encodeEnvelope(envelope));
+    });
+  }
+
   /** Convenience: ping the sidecar, returns true on a `pong` reply. */
   async healthy(): Promise<boolean> {
     const res = await this.request('ping', {});
@@ -74,5 +124,6 @@ export class SidecarClient {
     this.child?.kill('SIGTERM');
     this.child = undefined;
     this.pending.clear();
+    this.streaming.clear();
   }
 }
