@@ -3,12 +3,23 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SidecarClient } from './sidecar-client.js';
+import { ChatController } from './chat-controller.js';
 import { mapWorkspaceFolders, mapWorkspaceFoldersChange } from './workspace-folders.js';
 import { buildChatHtml } from './webview/chat-html.js';
 import { formatStatusbar } from './webview/cost-format.js';
 import type { ChatModelSnapshot } from './webview/chat-model.js';
 
 let sidecar: SidecarClient | undefined;
+
+/**
+ * Extra env for the spawned sidecar. An explicit `event4u.anthropicApiKey`
+ * setting wins; otherwise the sidecar inherits the IDE's env (so a key exported
+ * before launch still flows). CLI mode needs no key at all.
+ */
+function resolveSidecarEnv(): NodeJS.ProcessEnv {
+  const key = vscode.workspace.getConfiguration('event4u').get<string>('anthropicApiKey');
+  return key ? { ANTHROPIC_API_KEY: key } : {};
+}
 
 /**
  * Resolve the Agent Core sidecar entrypoint.
@@ -41,7 +52,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // sync, with no user action (handles .code-workspace multi-folder, the
   // no-folder window, renames, order changes, duplicate basenames, and
   // virtual / remote URIs — `uri.toString()` is the stable id in every case).
-  sidecar ??= new SidecarClient(serverPath);
+  sidecar ??= new SidecarClient(serverPath, undefined, resolveSidecarEnv());
   try {
     sidecar.start();
   } catch {
@@ -73,7 +84,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       { enableScripts: true, retainContextWhenHidden: true },
     );
 
-    sidecar ??= new SidecarClient(serverPath);
+    sidecar ??= new SidecarClient(serverPath, undefined, resolveSidecarEnv());
     try {
       sidecar.start();
     } catch {
@@ -101,9 +112,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       initialSnapshot,
     });
 
-    panel.webview.onDidReceiveMessage((message: unknown) => {
-      void message; // Wiring to the controller lands with the project service.
-    });
+    // Real chat: bridge webview send/stop/toggle to the sidecar's streaming
+    // chatSend / chatCancel (road-to-vertical-slice Phase 2).
+    const controller = new ChatController(sidecar, panel.webview, healthy, initialSnapshot.mode);
+    panel.webview.onDidReceiveMessage((message: unknown) =>
+      controller.handle((message ?? {}) as { kind?: string; text?: string }),
+    );
   });
   context.subscriptions.push(openChat);
 
