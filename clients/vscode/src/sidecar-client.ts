@@ -34,7 +34,12 @@ export class SidecarClient {
     if (this.child) return;
     const child = spawn(this.nodePath, [this.serverPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...this.env },
+      // `nodePath` defaults to `process.execPath`. In a packaged `.vsix` that is
+      // the VS Code / Electron binary, which would LAUNCH A WINDOW when handed a
+      // script arg — unless `ELECTRON_RUN_AS_NODE=1` tells it to behave as plain
+      // Node. Real Node ignores the var, so the dev path and unit tests are
+      // unaffected (AI council 2026-05-31, UNANIMOUS Fork 1A; ADR-017).
+      env: { ELECTRON_RUN_AS_NODE: '1', ...process.env, ...this.env },
     });
     this.child = child;
     this.parser = new NdjsonParser((envelope) => {
