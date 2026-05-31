@@ -25,6 +25,30 @@ export type PermissionLevel = z.infer<typeof PermissionLevelSchema>;
 export const PermissionDecisionSchema = z.enum(['allow_once', 'always', 'deny']);
 export type PermissionDecision = z.infer<typeof PermissionDecisionSchema>;
 
+export const RiskLevelSchema = z.enum(['low', 'medium', 'high']);
+export type RiskLevel = z.infer<typeof RiskLevelSchema>;
+
+/**
+ * T-PRD05 — derive the permission card's risk badge from the classification.
+ *
+ * This is a presentation hint, NOT a security boundary (per ADR-004 the
+ * boundary is the human at the confirmation button). It is deliberately a pure
+ * mapping off {@link PermissionLevel}, never persisted, so the badge can never
+ * be mistaken for an objective severity score:
+ *   low → low · requires_diff_approval → medium · requires_approval/denied → high
+ */
+export function classifyRisk(level: PermissionLevel): RiskLevel {
+  switch (level) {
+    case 'low':
+      return 'low';
+    case 'requires_diff_approval':
+      return 'medium';
+    case 'requires_approval':
+    case 'denied':
+      return 'high';
+  }
+}
+
 export interface PermissionRequest {
   tool: string;
   args: Record<string, unknown>;

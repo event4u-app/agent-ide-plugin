@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { normalizeArgsBlob, PermissionGate } from './gate.js';
+import { classifyRisk, normalizeArgsBlob, PermissionGate } from './gate.js';
 
 let dir: string;
 beforeEach(async () => {
@@ -158,5 +158,14 @@ describe('PermissionGate.evaluate — flow', () => {
     const fresh = new PermissionGate({ filePath: path });
     const result = await fresh.evaluate({ tool: 'run_command', args: {} });
     expect(result.result).toBe('ask');
+  });
+});
+
+describe('classifyRisk (T-PRD05)', () => {
+  it('maps the permission level to a risk badge', () => {
+    expect(classifyRisk('low')).toBe('low');
+    expect(classifyRisk('requires_diff_approval')).toBe('medium');
+    expect(classifyRisk('requires_approval')).toBe('high');
+    expect(classifyRisk('denied')).toBe('high');
   });
 });

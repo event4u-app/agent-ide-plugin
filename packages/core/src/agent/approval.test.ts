@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolCallEvent } from '@event4u-agent/protocol';
+import type { AuditEntry, AuditRecorder } from '../permissions/audit.js';
 import { PermissionGate, type PermissionDecision } from '../permissions/gate.js';
 import type { NormalizedToolCall } from '../tools/normalizer.js';
 import {
@@ -166,6 +167,64 @@ describe('runToolCallWithApproval', () => {
     const result = events[1];
     expect(result.kind === 'result' && result.outputPreview.endsWith('…')).toBe(true);
     expect(result.kind === 'result' && result.outputPreview.length).toBe(201);
+  });
+});
+
+describe('runToolCallWithApproval — audit trail (T-PRD05)', () => {
+  function recorder(): { audit: AuditRecorder; entries: Array<Omit<AuditEntry, 'ts'>> } {
+    const entries: Array<Omit<AuditEntry, 'ts'>> = [];
+    return {
+      entries,
+      audit: {
+        record: async (e) => {
+          entries.push(e);
+        },
+      },
+    };
+  }
+
+  it('records a hard-floor block as deny_hard_floor with the matched pattern', async () => {
+    const { audit, entries } = recorder();
+    await drain(
+      { id: 'a1', name: 'run_command', input: { cmd: 'git push --force origin main' } },
+      { gate: gate(), decide: async () => 'allow_once', exec: async () => OK, audit },
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.kind).toBe('deny_hard_floor');
+    expect(entries[0]?.tool).toBe('run_command');
+    expect(entries[0]?.reason).toBeTruthy();
+  });
+
+  it('records grant_once / grant_always / deny_user for the ask path', async () => {
+    const once = recorder();
+    await drain(
+      { id: 'a2', name: 'run_command', input: {} },
+      { gate: gate(), decide: async () => 'allow_once', exec: async () => OK, audit: once.audit },
+    );
+    expect(once.entries.map((e) => e.kind)).toEqual(['grant_once']);
+
+    const always = recorder();
+    await drain(
+      { id: 'a3', name: 'run_command', input: {} },
+      { gate: gate(), decide: async () => 'always', exec: async () => OK, audit: always.audit },
+    );
+    expect(always.entries.map((e) => e.kind)).toEqual(['grant_always']);
+
+    const denied = recorder();
+    await drain(
+      { id: 'a4', name: 'run_command', input: {} },
+      { gate: gate(), decide: async () => 'deny', exec: async () => OK, audit: denied.audit },
+    );
+    expect(denied.entries.map((e) => e.kind)).toEqual(['deny_user']);
+  });
+
+  it('records nothing for an auto-allowed low-risk tool', async () => {
+    const { audit, entries } = recorder();
+    await drain(
+      { id: 'a5', name: 'read_file', input: { path: 'a.ts' } },
+      { gate: gate(), decide: async () => 'allow_once', exec: async () => OK, audit },
+    );
+    expect(entries).toEqual([]);
   });
 });
 
