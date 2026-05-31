@@ -13,6 +13,8 @@ import {
   Methods,
   PingResponseSchema,
   RootIndexStatusSchema,
+  ToolCallEventSchema,
+  ToolReviewSchema,
   TerminalEventSchema,
   TerminalInputResponseSchema,
   TerminalSubscribeRequestSchema,
@@ -236,5 +238,80 @@ describe('method registry', () => {
     expect(MethodNameSchema.parse('ping')).toBe('ping');
     expect(MethodNameSchema.parse('connect')).toBe('connect');
     expect(() => MethodNameSchema.parse('frobnicate')).toThrow();
+  });
+
+  it('does NOT register a tool-call method yet (transport deferred this slice)', () => {
+    expect(Object.keys(Methods)).not.toContain('agentTurn');
+    expect(Object.keys(Methods)).not.toContain('toolCall');
+  });
+});
+
+describe('tool-call lifecycle union (product-readiness Phase 1)', () => {
+  it('discriminates every kind on `kind`', () => {
+    const started = ToolCallEventSchema.parse({
+      kind: 'started',
+      id: 't1',
+      name: 'run_command',
+      argsPreview: 'npm test',
+    });
+    expect(started.kind).toBe('started');
+
+    const resolved = ToolCallEventSchema.parse({
+      kind: 'approvalResolved',
+      id: 't1',
+      decision: 'allow_once',
+    });
+    expect(resolved.kind === 'approvalResolved' && resolved.decision).toBe('allow_once');
+
+    const result = ToolCallEventSchema.parse({
+      kind: 'result',
+      id: 't1',
+      ok: true,
+      outputPreview: 'ok',
+    });
+    expect(result.kind === 'result' && result.ok).toBe(true);
+
+    expect(() => ToolCallEventSchema.parse({ kind: 'bogus', id: 't1' })).toThrow();
+  });
+
+  it('approvalRequested carries the gate level and an optional diff review', () => {
+    const bare = ToolCallEventSchema.parse({
+      kind: 'approvalRequested',
+      id: 't2',
+      level: 'requires_approval',
+    });
+    expect(bare.kind === 'approvalRequested' && bare.review).toBeUndefined();
+
+    const withDiff = ToolCallEventSchema.parse({
+      kind: 'approvalRequested',
+      id: 't3',
+      level: 'requires_diff_approval',
+      riskReason: 'writes 2 files',
+      review: {
+        kind: 'diff',
+        files: [{ path: 'src/a.ts', diff: '@@ -1 +1 @@', isNewFile: false }],
+      },
+    });
+    expect(withDiff.kind === 'approvalRequested' && withDiff.review?.files).toHaveLength(1);
+  });
+
+  it('rejects an unknown approval level and decision', () => {
+    expect(() =>
+      ToolCallEventSchema.parse({ kind: 'approvalRequested', id: 't4', level: 'auto' }),
+    ).toThrow();
+    expect(() =>
+      ToolCallEventSchema.parse({ kind: 'approvalResolved', id: 't4', decision: 'maybe' }),
+    ).toThrow();
+  });
+
+  it('ToolReview is a diff payload of per-file diffs', () => {
+    const review = ToolReviewSchema.parse({
+      kind: 'diff',
+      files: [
+        { path: 'a.ts', diff: 'd1', isNewFile: true },
+        { path: 'b.ts', diff: 'd2', isNewFile: false },
+      ],
+    });
+    expect(review.files.map((f) => f.path)).toEqual(['a.ts', 'b.ts']);
   });
 });

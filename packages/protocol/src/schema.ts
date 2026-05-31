@@ -374,6 +374,87 @@ export const ChatCancelResponseSchema = z.object({
 });
 export type ChatCancelResponse = z.infer<typeof ChatCancelResponseSchema>;
 
+// --- tool-call lifecycle + approval (product-readiness Phase 1) ----------
+
+/**
+ * The streamed tool-call lifecycle, surfaced to the IDE as approval / diff /
+ * result cards (T-PRD01 / T-PRD02 / T-PRD04). One discriminated union — not a
+ * separate diff-review channel — so a card's whole story stays keyed to one
+ * tool-call `id` (AI council 2026-05-31, codex-cli 0.134.0 + gemini 0.41.2,
+ * UNANIMOUS): multi-file diffs ride inside `approvalRequested.review` rather
+ * than a parallel `DiffReviewEvent` that the client would have to correlate.
+ *
+ * camelCase wire shape, modelled on {@link TerminalEventSchema}. The Core
+ * orchestrates the lifecycle in `agent/approval.ts`; the transport that
+ * streams these to the client is intentionally NOT wired in this slice (the
+ * multi-step agent turn that emits them folds into the dispatcher later) —
+ * the union + core + Kotlin codegen ship first, exactly like the terminal and
+ * chat seams did.
+ */
+
+/** One file in a multi-file diff the user reviews before it is written. */
+export const ReviewFileSchema = z.object({
+  /** Workspace-relative, forward-slash path. */
+  path: z.string().min(1),
+  /** Unified diff for this file. */
+  diff: z.string(),
+  isNewFile: z.boolean(),
+});
+export type ReviewFile = z.infer<typeof ReviewFileSchema>;
+
+/**
+ * Optional structured review payload carried by `approvalRequested`. `diff` is
+ * the only kind today (a multi-file `write_files` plan); future kinds (e.g. a
+ * shell-command preview) extend this union without widening the event itself.
+ */
+export const ToolReviewSchema = z.object({
+  kind: z.literal('diff'),
+  files: z.array(ReviewFileSchema),
+});
+export type ToolReview = z.infer<typeof ToolReviewSchema>;
+
+/** Wire mirror of the gate's two "ask" levels (core `PermissionLevel`). */
+export const ApprovalLevelSchema = z.enum(['requires_diff_approval', 'requires_approval']);
+export type ApprovalLevel = z.infer<typeof ApprovalLevelSchema>;
+
+/** Wire mirror of the core `PermissionDecision`. */
+export const ApprovalDecisionSchema = z.enum(['allow_once', 'always', 'deny']);
+export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
+
+/** The typed tool-call lifecycle union, discriminated on `kind`. */
+export const ToolCallEventSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('started'),
+    id: z.string().min(1),
+    name: z.string().min(1),
+    /** Truncated, human-readable preview of the call arguments. */
+    argsPreview: z.string(),
+  }),
+  z.object({
+    kind: z.literal('approvalRequested'),
+    id: z.string().min(1),
+    level: ApprovalLevelSchema,
+    /** Why the gate is asking, when it can say. */
+    riskReason: z.string().optional(),
+    /** Present for diff-approval tools; the per-file diff the user reviews. */
+    review: ToolReviewSchema.optional(),
+  }),
+  z.object({
+    kind: z.literal('approvalResolved'),
+    id: z.string().min(1),
+    decision: ApprovalDecisionSchema,
+  }),
+  z.object({
+    kind: z.literal('result'),
+    id: z.string().min(1),
+    ok: z.boolean(),
+    /** Truncated, human-readable preview of the tool output. */
+    outputPreview: z.string(),
+  }),
+  z.object({ kind: z.literal('error'), id: z.string().min(1), message: z.string() }),
+]);
+export type ToolCallEvent = z.infer<typeof ToolCallEventSchema>;
+
 // --- method registry ----------------------------------------------------
 
 /**
