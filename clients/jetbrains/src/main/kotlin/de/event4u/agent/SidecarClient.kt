@@ -10,6 +10,7 @@ import java.io.BufferedWriter
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.util.UUID
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.TimeUnit
@@ -29,6 +30,13 @@ class SidecarClient(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val pending = ConcurrentHashMap<String, SynchronousQueue<Envelope>>()
+
+    /**
+     * Streaming correlations — invoked for EVERY envelope of a `messageId` and
+     * self-removing on the terminal `done:true`. Checked before [pending] so a
+     * streamed `done:false` token never consumes the one-shot path.
+     */
+    private val streaming = ConcurrentHashMap<String, (Envelope) -> Unit>()
 
     private var process: Process? = null
     private var writer: BufferedWriter? = null
@@ -51,7 +59,14 @@ class SidecarClient(
                         if (line.isBlank()) return@forEach
                         runCatching { json.decodeFromString(Envelope.serializer(), line) }
                             .getOrNull()
-                            ?.let { env -> pending.remove(env.messageId)?.put(env) }
+                            ?.let { env ->
+                                val stream = streaming[env.messageId]
+                                if (stream != null) {
+                                    stream(env)
+                                } else {
+                                    pending.remove(env.messageId)?.put(env)
+                                }
+                            }
                     }
                 }
             }.apply {
@@ -86,6 +101,45 @@ class SidecarClient(
         return queue.poll(timeoutMs, TimeUnit.MILLISECONDS).also { pending.remove(messageId) }
     }
 
+    /**
+     * Send a streaming request. [onToken] fires for each intermediate
+     * `done:false` envelope; the call blocks up to [timeoutMs] and returns the
+     * terminal `done:true` envelope. Used by `chatSend`, whose tokens arrive as
+     * `done:false` frames. Run this off the EDT — it blocks on the stream.
+     */
+    fun requestStream(
+        messageType: String,
+        data: JsonObject,
+        timeoutMs: Long = STREAM_TIMEOUT_MS,
+        onToken: (Envelope) -> Unit,
+    ): Envelope? {
+        val w = writer ?: error("sidecar not started")
+        val messageId = UUID.randomUUID().toString()
+        val terminal = ArrayBlockingQueue<Envelope>(1)
+        streaming[messageId] = { env ->
+            if (env.done) {
+                streaming.remove(messageId)
+                terminal.offer(env)
+            } else {
+                onToken(env)
+            }
+        }
+
+        val envelope =
+            buildJsonObject {
+                put("messageId", JsonPrimitive(messageId))
+                put("messageType", JsonPrimitive(messageType))
+                put("data", data)
+                put("done", JsonPrimitive(true))
+            }
+        synchronized(w) {
+            w.write(json.encodeToString(JsonObject.serializer(), envelope))
+            w.write("\n")
+            w.flush()
+        }
+        return terminal.poll(timeoutMs, TimeUnit.MILLISECONDS).also { streaming.remove(messageId) }
+    }
+
     /** Ping the sidecar; true on a `pong` reply. */
     fun healthy(): Boolean {
         val res = request("ping", buildJsonObject {}) ?: return false
@@ -98,9 +152,11 @@ class SidecarClient(
         process = null
         writer = null
         pending.clear()
+        streaming.clear()
     }
 
     private companion object {
         const val DEFAULT_TIMEOUT_MS = 5000L
+        const val STREAM_TIMEOUT_MS = 120_000L
     }
 }
