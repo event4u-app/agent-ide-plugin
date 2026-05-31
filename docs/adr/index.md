@@ -20,6 +20,7 @@
 | [ADR-014](ADR-014-trust-control-core.md) | Trust & Control Core — Separate Audit Log, Derived Risk Badge, Daily Budget Tracker, Standalone Agent Modes, ContextScope Codegen | Proposed | 2026-05-31 | road-to-product-readiness Phase 2 (T-PRD05/06/08/09) |
 | [ADR-015](ADR-015-git-loop-core.md) | Git-Loop Core — Diff-Driven Commit-Message Builder (Fail-Hard Parse), PR-Description Builder (Deterministic Strip Sanitiser), Review-Mode Change Summary (Pure Derivation), Transport Deferred | Proposed | 2026-05-31 | road-to-product-readiness Phase 4 (T-PRD14/15/16) |
 | [ADR-016](ADR-016-git-loop-transport.md) | Git-Loop Transport — Full-Turn RPC Methods over a Dedicated GitHandler, Single Sanitised Envelope, Bounded Commit Re-Prompt, Review-Run-Internal, cwd-on-the-Wire | Proposed | 2026-05-31 | road-to-product-readiness Phase 4 (T-PRD14/15/16 transport half) |
+| [ADR-017](ADR-017-distribution-packaging.md) | Distribution Packaging — Sidecar Bundled into VSIX (ELECTRON_RUN_AS_NODE) + JetBrains ZIP (prepareSandbox + Pure Resolver), System-Node for JetBrains, Onboarding Detection Core Seam | Proposed | 2026-05-31 | road-to-product-readiness Phase 3 (T-PRD10/11 + T-PRD12 core seam) |
 
 ## Status legend
 
