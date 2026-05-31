@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { Envelope } from '@event4u-agent/protocol';
+import type { Envelope, LlmStreamEvent } from '@event4u-agent/protocol';
 import { NdjsonParser, encodeEnvelope } from '@event4u-agent/shared';
 import { Dispatcher } from './server.js';
 import { WorkspaceCoordinator, type RootWalker } from './context/workspace-coordinator.js';
 import type { RootRegistry } from './context/roots.js';
+import type { LlmBackend } from './llm/backend.js';
+import type { GitRunner } from './commands/commit.js';
+import { GitHandler } from './git/handler.js';
 
 const request = (messageType: string, data: unknown, messageId = 'r1'): Envelope => ({
   messageId,
@@ -118,5 +121,52 @@ describe('full wire round-trip (encode -> parse -> dispatch)', () => {
     const res = await dispatcher.dispatch(parsed[0]!);
     expect(res.messageId).toBe('w1');
     expect(res.data).toEqual({ text: 'wire' });
+  });
+});
+
+describe('Dispatcher — git-loop methods (product-readiness Phase 4 transport)', () => {
+  const DIFF = `diff --git a/x.ts b/x.ts
+index 1..2 100644
+--- a/x.ts
++++ b/x.ts
+@@ -1,1 +1,2 @@
+ const a = 1;
++const b = 2;
+`;
+
+  function gitDispatcher(reply: string): Dispatcher {
+    const backend: LlmBackend = {
+      id: 'fake',
+      mode: 'api',
+      async *stream(): AsyncIterable<LlmStreamEvent> {
+        yield { kind: 'text_delta', text: reply };
+        yield { kind: 'stop', reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } };
+      },
+    };
+    const runner: GitRunner = {
+      run: () => Promise.resolve({ stdout: DIFF, stderr: '', exitCode: 0 }),
+    };
+    const git = new GitHandler({
+      resolveBackend: () => backend,
+      resolveModel: () => 'claude-sonnet-4-6',
+      defaultCwd: '/repo',
+      runner,
+    });
+    return new Dispatcher(new WorkspaceCoordinator(), undefined, git);
+  }
+
+  it('routes gitCommitMessage to the handler and returns the parsed result', async () => {
+    const dispatcher = gitDispatcher('feat(git): expose the loop');
+    const res = await dispatcher.dispatch(request('gitCommitMessage', { cwd: '/repo' }, 'g1'));
+    expect(res.messageType).toBe('gitCommitMessage');
+    expect(res.messageId).toBe('g1');
+    expect(res.data).toMatchObject({ ok: true, text: 'feat(git): expose the loop' });
+  });
+
+  it('returns git_not_configured when no git handler is wired', async () => {
+    const dispatcher = new Dispatcher();
+    const res = await dispatcher.dispatch(request('gitCommitMessage', { cwd: '/repo' }));
+    expect(res.messageType).toBe('error');
+    expect(res.data).toMatchObject({ code: 'git_not_configured' });
   });
 });

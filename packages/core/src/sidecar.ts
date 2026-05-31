@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { ChatHandler } from './chat/handler.js';
 import { FileConversationStore, type ConversationStore } from './chat/store.js';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
+import { GitHandler } from './git/handler.js';
 import { ProviderRegistry } from './llm/provider-registry.js';
 import type { PricingBook } from './pricing/loader.js';
 import { PLUGIN_STATE_DIR } from './sessions/locations.js';
@@ -45,5 +46,13 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     pricing: options.pricing,
   });
 
-  return new Dispatcher(new WorkspaceCoordinator(), chatHandler);
+  // Git-loop handler — shares the registry; the diff/log are read from the
+  // request's `cwd` (default: this composition root's `cwd`).
+  const gitHandler = new GitHandler({
+    resolveBackend: (providerId) => registry.resolveBackend(providerId),
+    resolveModel: (providerId) => registry.resolveModel(providerId),
+    defaultCwd: cwd,
+  });
+
+  return new Dispatcher(new WorkspaceCoordinator(), chatHandler, gitHandler);
 }
