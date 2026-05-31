@@ -95,6 +95,87 @@ const classes: DataClass[] = [
     name: 'RootStatusResponse',
     fields: [{ name: 'status', kotlinType: 'List<RootIndexStatus>' }],
   },
+
+  // --- live terminal (Phase 9, T-903) ---
+  {
+    name: 'OutputChunk',
+    doc: 'One chunk of raw PTY output; seq is monotonic per session.',
+    fields: [
+      { name: 'seq', kotlinType: 'Int' },
+      { name: 'data', kotlinType: 'String' },
+      { name: 'at', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'PendingInput',
+    doc: 'A discrete input request the session is blocked on.',
+    fields: [
+      { name: 'inputRequestId', kotlinType: 'String' },
+      { name: 'prompt', kotlinType: 'String' },
+      { name: 'at', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'ReplaySlice',
+    doc: 'Replay window returned on subscribe / reconnect.',
+    fields: [
+      { name: 'chunks', kotlinType: 'List<OutputChunk>' },
+      { name: 'droppedChunks', kotlinType: 'Int' },
+      { name: 'droppedBytes', kotlinType: 'Int' },
+      { name: 'firstSeqAvailable', kotlinType: 'Int' },
+      { name: 'nextSeq', kotlinType: 'Int' },
+      { name: 'restartRequired', kotlinType: 'Boolean' },
+    ],
+  },
+  {
+    name: 'TerminalSubscribeRequest',
+    doc: 'Subscribe to a session; the Core streams terminal events on this id.',
+    fields: [
+      { name: 'commandId', kotlinType: 'String' },
+      { name: 'surfaceId', kotlinType: 'String' },
+      { name: 'replayFromSeq', kotlinType: 'Int', default: '0' },
+    ],
+  },
+  {
+    name: 'TerminalSubscribeResponse',
+    doc: 'First envelope of the subscribe stream — replay + current state.',
+    fields: [
+      { name: 'subscriptionId', kotlinType: 'String' },
+      { name: 'status', kotlinType: 'String' },
+      { name: 'pendingInput', kotlinType: 'PendingInput?', default: 'null' },
+      { name: 'replay', kotlinType: 'ReplaySlice' },
+    ],
+  },
+  {
+    name: 'TerminalInputRequest',
+    doc: 'Write to stdin — raw, or answer a pending request (first-write-wins).',
+    fields: [
+      { name: 'commandId', kotlinType: 'String' },
+      { name: 'surfaceId', kotlinType: 'String' },
+      { name: 'data', kotlinType: 'String' },
+      { name: 'inputRequestId', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'TerminalInputResponse',
+    fields: [
+      { name: 'accepted', kotlinType: 'Boolean' },
+      { name: 'reason', kotlinType: 'String?', default: 'null' },
+      { name: 'winningSurfaceId', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'TerminalResizeRequest',
+    fields: [
+      { name: 'commandId', kotlinType: 'String' },
+      { name: 'cols', kotlinType: 'Int' },
+      { name: 'rows', kotlinType: 'Int' },
+    ],
+  },
+  {
+    name: 'TerminalResizeResponse',
+    fields: [{ name: 'ack', kotlinType: 'Boolean' }],
+  },
 ];
 
 function emitClass(dc: DataClass): string {

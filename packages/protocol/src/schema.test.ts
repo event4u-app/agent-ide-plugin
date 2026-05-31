@@ -9,6 +9,9 @@ import {
   Methods,
   PingResponseSchema,
   RootIndexStatusSchema,
+  TerminalEventSchema,
+  TerminalInputResponseSchema,
+  TerminalSubscribeRequestSchema,
   WorkspaceFolderSchema,
   WorkspaceFoldersChangedRequestSchema,
 } from './schema.js';
@@ -104,13 +107,51 @@ describe('context scope (discriminated union)', () => {
   });
 });
 
+describe('terminal schemas (Phase 9)', () => {
+  it('subscribe defaults replayFromSeq to 0', () => {
+    const parsed = TerminalSubscribeRequestSchema.parse({ commandId: 'c1', surfaceId: 'chat' });
+    expect(parsed.replayFromSeq).toBe(0);
+  });
+
+  it('the event union discriminates on kind', () => {
+    const out = TerminalEventSchema.parse({
+      kind: 'output',
+      commandId: 'c1',
+      chunk: { seq: 0, data: 'x', at: '2026-01-01T00:00:00Z' },
+    });
+    expect(out.kind).toBe('output');
+    const conflict = TerminalEventSchema.parse({
+      kind: 'inputConflict',
+      commandId: 'c1',
+      inputRequestId: 'r1',
+      winningSurfaceId: 'chat',
+      losingSurfaceId: 'ide',
+    });
+    expect(conflict.kind).toBe('inputConflict');
+    expect(() => TerminalEventSchema.parse({ kind: 'bogus', commandId: 'c1' })).toThrow();
+  });
+
+  it('input response carries an arbitration reason on rejection', () => {
+    const rejected = TerminalInputResponseSchema.parse({
+      accepted: false,
+      reason: 'already-submitted',
+      winningSurfaceId: 'chat',
+    });
+    expect(rejected.reason).toBe('already-submitted');
+    expect(() => TerminalInputResponseSchema.parse({ accepted: false, reason: 'nope' })).toThrow();
+  });
+});
+
 describe('method registry', () => {
-  it('exposes the multi-project methods alongside ping/echo', () => {
+  it('exposes the multi-project + terminal methods alongside ping/echo', () => {
     expect(Object.keys(Methods).sort()).toEqual([
       'connect',
       'echo',
       'ping',
       'rootStatus',
+      'terminalInput',
+      'terminalResize',
+      'terminalSubscribe',
       'workspaceFoldersChanged',
     ]);
   });
