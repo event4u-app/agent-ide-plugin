@@ -12,7 +12,13 @@ function main(): void {
 
   const parser = new NdjsonParser(
     (envelope) => {
-      void dispatcher.dispatch(envelope).then((response) => {
+      // For streaming methods the dispatcher pushes `done:false` token
+      // envelopes through `emit`; every method resolves with exactly one
+      // terminal envelope, so a streaming client always sees the stream close.
+      const emit = (e: typeof envelope): void => {
+        process.stdout.write(encodeEnvelope(e));
+      };
+      void dispatcher.dispatch(envelope, emit).then((response) => {
         process.stdout.write(encodeEnvelope(response));
       });
     },

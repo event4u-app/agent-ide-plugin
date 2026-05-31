@@ -233,6 +233,48 @@ chat history, index a target repo BM25-only vs hybrid, compare MRR / Recall@10.
 - 2026-MM-DD · Phase B verified by <name> · IDE <vscode|phpstorm> · roots auto-detected: <n>
 ```
 
+## Vertical slice (chat → send → stream → stop → cost)
+
+> Phase 1 (the `chatSend` / `chatCancel` dispatch + streaming handler + cost) is
+> pure-core and lands fully unit-tested in CI (`packages/core/src/chat/handler.test.ts`,
+> `packages/protocol/src/schema.test.ts`). What needs a running IDE: that the
+> streamed tokens actually render live, the Stop button aborts mid-stream, and
+> the cost footer fills in. See ADR-010 for the design. `main.ts` wires a real
+> `ChatHandler` (backend resolver + store + pricing) as part of Phase 2 — until
+> then a real-sidecar `chatSend` returns `chat_not_configured`.
+
+### Phase 2 — VS Code: stream + stop end-to-end (T-VS05–T-VS08)
+
+1. Wire a real `ChatHandler` into the sidecar `main.ts` (backend resolver +
+   `ConversationStore` + `PricingBook`); add a streaming `stream()` method to
+   `clients/vscode/src/sidecar-client.ts` (the current `request()` is
+   request/response only — it resolves on the first envelope).
+2. `task vscode:build`, launch the Extension-Development-Host (F5).
+
+- [ ] Open chat → type a prompt → send → assistant tokens stream into the active card live (spinner while streaming).
+- [ ] The Stop control fires `chatCancel`; the partial answer is kept, the spinner clears, the card marks "stopped".
+- [ ] The cost footer shows a live token counter during the stream and the final cost figure from the `done` payload after.
+- [ ] Reopen the conversation → the streamed turn (and a stopped partial) survived (persisted via the `chat/` store).
+
+### Phase 3 — JetBrains: stream + stop end-to-end (T-VS09–T-VS11)
+
+1. `task jetbrains:runIde` (needs JDK 17 + GUI). `SidecarClient.kt` holds the
+   connection for the tool-window lifetime; `ChatPanel.kt` sends `chatSend`.
+2. Open the tool window.
+
+- [ ] Send → tokens stream into the active message; a Stop action fires `chatCancel` (partial kept, status "stopped").
+- [ ] The cost footer wires `CostFooterFormatter.kt` to the live counter + the final `done` cost (pin `Locale.US` for number formatting — known JetBrains gotcha).
+
+### Phase 4 — cost consistent across both surfaces (T-VS12 client half)
+
+- [ ] The same streamed turn shows the same final `totalUsd` in VS Code and JetBrains (within the documented live-vs-final estimate delta — see ADR-010 §5: the live counter is an estimate, the `done` payload's `totalUsd` is authoritative; a jumpy counter is not a bug).
+
+### Record the result
+
+```
+- 2026-MM-DD · Vertical slice verified by <name> · IDE <vscode|phpstorm> · stream ✓ stop ✓ cost ✓
+```
+
 ## Verification log
 
 > Append entries below. Newest at the top. One line per verification, signed by the human who walked the list.

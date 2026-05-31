@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LlmModeSchema } from './llm.js';
 
 /**
  * Wire protocol — newline-delimited JSON (NDJSON) envelopes over stdio.
@@ -280,6 +281,99 @@ export const TerminalResizeResponseSchema = z.object({
 });
 export type TerminalResizeResponse = z.infer<typeof TerminalResizeResponseSchema>;
 
+// --- chat send / cancel (vertical slice, T-VS01 / T-VS02) ---------------
+
+/**
+ * Chat-RPC streaming method. `chatSend` drives an LLM backend and streams the
+ * assistant's answer back over the NDJSON envelope, modelled on the
+ * `terminalSubscribe` precedent (one `messageId`, N `done:false` chunks, a
+ * terminal `done:true`). Each `done:false` envelope carries a
+ * {@link ChatTokenEvent}; the terminal `done:true` carries a
+ * {@link ChatSendResponse} with the full text, token usage, and turn cost.
+ *
+ * Wire payloads are camelCase and decoupled from the Core-internal snake_case
+ * `LlmUsage` — the handler maps between them — so the Kotlin DTO codegen needs
+ * no `@SerialName` and stays consistent with the rest of the protocol.
+ *
+ * Design ratified by AI council (codex-cli 0.134.0 + gemini 0.41.2,
+ * 2026-05-31, UNANIMOUS): additive `emit`-callback streaming on the dispatcher
+ * (request/response contract preserved), cancellation keyed by
+ * `conversationId`, provider-direct turn for the slice (the multi-step
+ * `AgentDriver` folds in later), and partial text kept + persisted on a
+ * mid-stream cancel.
+ */
+
+/**
+ * Per-turn token usage on the wire. camelCase; the Core maps its internal
+ * snake_case `LlmUsage` to this shape.
+ */
+export const ChatUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  cacheReadTokens: z.number().int().nonnegative().optional(),
+  cacheWriteTokens: z.number().int().nonnegative().optional(),
+});
+export type ChatUsage = z.infer<typeof ChatUsageSchema>;
+
+/**
+ * The single turn-cost shape both clients only FORMAT — no per-client cost
+ * math (Phase 4 / T-VS12 pins this as the source of truth).
+ */
+export const ChatCostSchema = z.object({
+  model: z.string(),
+  /** `api` = real metered cost · `cli` = shadow (would-have-cost-on-API). */
+  mode: LlmModeSchema,
+  totalUsd: z.number().nonnegative(),
+  /** `true` when the figure is an estimate: CLI shadow cost, or no pricing book. */
+  isEstimate: z.boolean(),
+});
+export type ChatCost = z.infer<typeof ChatCostSchema>;
+
+export const ChatSendRequestSchema = z.object({
+  conversationId: z.string().min(1),
+  message: z.string(),
+  /** Provider/backend selector; omitted = the Core's default. */
+  providerId: z.string().min(1).optional(),
+  /**
+   * Per-turn retrieval scope; omitted = default (`all`). Honoured once context
+   * retrieval is wired into the turn; ignored by the vertical slice.
+   */
+  scope: ContextScopeSchema.optional(),
+});
+export type ChatSendRequest = z.infer<typeof ChatSendRequestSchema>;
+
+/** Data of each `done:false` envelope: one streamed assistant token. */
+export const ChatTokenEventSchema = z.object({
+  token: z.string(),
+});
+export type ChatTokenEvent = z.infer<typeof ChatTokenEventSchema>;
+
+/** Data of the terminal `done:true` envelope: the full turn result. */
+export const ChatSendResponseSchema = z.object({
+  /** Stable id of the persisted assistant message. */
+  messageId: z.string().min(1),
+  /** The full assistant text (partial if `cancelled`). */
+  text: z.string(),
+  usage: ChatUsageSchema,
+  cost: ChatCostSchema,
+  /** `true` when the turn was aborted mid-stream by `chatCancel`. */
+  cancelled: z.boolean(),
+  /** LLM stop reason, or `cancelled` on abort. */
+  stopReason: z.string(),
+});
+export type ChatSendResponse = z.infer<typeof ChatSendResponseSchema>;
+
+export const ChatCancelRequestSchema = z.object({
+  conversationId: z.string().min(1),
+});
+export type ChatCancelRequest = z.infer<typeof ChatCancelRequestSchema>;
+
+export const ChatCancelResponseSchema = z.object({
+  /** `true` if an in-flight turn was found and aborted; `false` if nothing was running. */
+  cancelled: z.boolean(),
+});
+export type ChatCancelResponse = z.infer<typeof ChatCancelResponseSchema>;
+
 // --- method registry ----------------------------------------------------
 
 /**
@@ -302,6 +396,8 @@ export const Methods = {
   },
   terminalInput: { request: TerminalInputRequestSchema, response: TerminalInputResponseSchema },
   terminalResize: { request: TerminalResizeRequestSchema, response: TerminalResizeResponseSchema },
+  chatSend: { request: ChatSendRequestSchema, response: ChatSendResponseSchema },
+  chatCancel: { request: ChatCancelRequestSchema, response: ChatCancelResponseSchema },
 } as const;
 
 export type MethodName = keyof typeof Methods;
