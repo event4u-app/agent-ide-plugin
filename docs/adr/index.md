@@ -17,6 +17,7 @@
 | [ADR-011](ADR-011-provider-registry-and-sidecar-wiring.md) | Provider Registry + Sidecar Composition Root — Eager Build, Env-Default, Throw-on-Unconfigured, Env Model Override | Proposed | 2026-05-31 | road-to-product-readiness Phase 2 (T-PRD17, core half) |
 | [ADR-012](ADR-012-streaming-client-integration.md) | Streaming Client Integration — Separate Correlation Map, Session conversationId, Mode→Provider, Env-Key, Snapshot-per-Token | Proposed | 2026-05-31 | road-to-vertical-slice Phase 2/3 (T-VS05–11) |
 | [ADR-013](ADR-013-tool-call-approval-events.md) | Tool-Call Lifecycle Events — One Union, Diff-in-Approval, Sealed-Class Codegen, Injected-Decide Orchestrator, Transport Deferred | Proposed | 2026-05-31 | road-to-product-readiness Phase 1 (T-PRD01/02/04) |
+| [ADR-014](ADR-014-trust-control-core.md) | Trust & Control Core — Separate Audit Log, Derived Risk Badge, Daily Budget Tracker, Standalone Agent Modes, ContextScope Codegen | Proposed | 2026-05-31 | road-to-product-readiness Phase 2 (T-PRD05/06/08/09) |
 
 ## Status legend
 
