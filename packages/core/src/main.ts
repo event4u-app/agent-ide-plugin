@@ -1,5 +1,5 @@
 import { Logger, NdjsonParser, encodeEnvelope } from '@event4u-agent/shared';
-import { Dispatcher } from './server.js';
+import { buildCoreDispatcher } from './sidecar.js';
 
 /**
  * Sidecar entrypoint. Reads NDJSON request envelopes from stdin, dispatches
@@ -8,7 +8,9 @@ import { Dispatcher } from './server.js';
  */
 function main(): void {
   const log = new Logger('core', 'info');
-  const dispatcher = new Dispatcher();
+  // Composition root: wire a real ChatHandler (provider registry + on-disk
+  // conversation store) so `chatSend` works instead of `chat_not_configured`.
+  const dispatcher = buildCoreDispatcher();
 
   const parser = new NdjsonParser(
     (envelope) => {

@@ -14,6 +14,7 @@
 | [ADR-008](ADR-008-chat-persistence-and-checkpoints.md) | Chat Persistence (append-only JSONL event log) + Copy-on-Write Forking + Metadata-only Checkpoints | Proposed | 2026-05-31 | road-to-v1-0 Phase 13 (T-1301/1302/1303/1307) |
 | [ADR-009](ADR-009-live-terminal-core.md) | Live PTY Terminal Core — Interface+Fake PTY, Streaming-Subscribe Push, Dual-Cap Ring Buffer, First-Write-Wins Input | Proposed | 2026-05-31 | road-to-v1-0 Phase 9 (T-901/902/903/905/906) |
 | [ADR-010](ADR-010-chat-streaming-dispatch.md) | Chat Streaming Dispatch — Additive emit-Callback, Cancellation by conversationId, Provider-Direct Slice, Single Cost Shape | Proposed | 2026-05-31 | road-to-vertical-slice Phase 1 (T-VS01/02/03/04) + Phase 4 (T-VS12/13) |
+| [ADR-011](ADR-011-provider-registry-and-sidecar-wiring.md) | Provider Registry + Sidecar Composition Root — Eager Build, Env-Default, Throw-on-Unconfigured, Env Model Override | Proposed | 2026-05-31 | road-to-product-readiness Phase 2 (T-PRD17, core half) |
 
 ## Status legend
 
