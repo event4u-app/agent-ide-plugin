@@ -33,10 +33,20 @@ commands:
     expect(parseSettings(yamlText)).toEqual({
       llm: { default_provider: 'anthropic', default_mode: 'cli', providers: [] },
       roles: { active_role: 'developer' },
+      cost: { warning_threshold_ratio: 0.8 },
       commands: { suggestion: { enabled: false, senior_gate: true } },
       mcp: { servers: [] },
       telemetry: { artifact_engagement: { enabled: false } },
     });
+  });
+
+  it('parses cost guardrails (T-PRD06)', () => {
+    const parsed = parseSettings('cost:\n  daily_budget_usd: 5\n  warning_threshold_ratio: 0.5\n');
+    expect(parsed.cost).toEqual({ daily_budget_usd: 5, warning_threshold_ratio: 0.5 });
+  });
+
+  it('defaults the cost warning threshold to 0.8 with no budget', () => {
+    expect(DEFAULT_SETTINGS.cost).toEqual({ warning_threshold_ratio: 0.8 });
   });
 
   it('defaults telemetry engagement to OFF (opt-in) and reads an explicit opt-in', () => {

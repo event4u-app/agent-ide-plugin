@@ -101,6 +101,20 @@ const RolesSchema = z
   .partial()
   .default({});
 
+/**
+ * T-PRD06 — cost guardrails. `daily_budget_usd` caps spend per UTC day; the
+ * composer warns once `spent / budget` reaches `warning_threshold_ratio`
+ * (default 0.8). Omitted `daily_budget_usd` = no budget (the tracker still
+ * records spend but never breaches).
+ */
+const CostSchema = z
+  .object({
+    daily_budget_usd: z.number().positive(),
+    warning_threshold_ratio: z.number().min(0).max(1),
+  })
+  .partial()
+  .default({});
+
 const CommandsSchema = z
   .object({
     suggestion: CommandSuggestionSchema,
@@ -112,6 +126,7 @@ export const AgentSettingsSchema = z
   .object({
     llm: LlmSchema,
     roles: RolesSchema,
+    cost: CostSchema,
     commands: CommandsSchema,
     mcp: McpSchema,
     telemetry: TelemetrySchema,
@@ -126,6 +141,10 @@ export const AgentSettingsSchema = z
     },
     roles: {
       active_role: parsed.roles?.active_role,
+    },
+    cost: {
+      daily_budget_usd: parsed.cost?.daily_budget_usd,
+      warning_threshold_ratio: parsed.cost?.warning_threshold_ratio ?? 0.8,
     },
     commands: {
       suggestion: {
