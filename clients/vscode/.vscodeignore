@@ -1,0 +1,11 @@
+# Source + tooling — the runnable bundle is `out/`, the sidecar is `sidecar/`.
+src/**
+scripts/**
+**/*.test.ts
+**/*.test.js
+tsconfig.json
+vitest.config.*
+.vscodeignore
+node_modules/**
+
+# Keep (NOT ignored): out/, sidecar/, package.json, README.md, CHANGELOG.md, LICENSE

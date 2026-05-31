@@ -2,11 +2,16 @@
   "name": "event4u-agent-vscode",
   "displayName": "event4u Agent",
   "description": "event4u Agent — AI coding assistant powered by your agent-config tree.",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "license": "MIT",
   "private": true,
   "type": "commonjs",
   "publisher": "event4u",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/event4u-app/agent-ide-plugin.git",
+    "directory": "clients/vscode"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -83,13 +88,16 @@
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=out/extension.js && esbuild src/webview/chat-app.ts --bundle --platform=browser --format=iife --target=es2020 --outfile=out/webview.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bundle:sidecar": "node scripts/bundle-sidecar.mjs",
+    "package": "pnpm run build && pnpm run bundle:sidecar && vsce package --no-dependencies --out event4u-agent.vsix"
   },
   "dependencies": {
     "@event4u-agent/protocol": "workspace:*",
     "@event4u-agent/shared": "workspace:*"
   },
   "devDependencies": {
-    "@types/vscode": "^1.90.0"
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.1"
   }
 }

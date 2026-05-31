@@ -2,6 +2,7 @@ package de.event4u.agent.chat
 
 import com.intellij.openapi.project.Project
 import de.event4u.agent.SidecarClient
+import de.event4u.agent.SidecarLocator
 import de.event4u.agent.protocol.ChatSendResponse
 import de.event4u.agent.protocol.Envelope
 import de.event4u.agent.ui.ModelPill
@@ -177,8 +178,7 @@ class SidecarChatController(
     @Synchronized
     private fun ensureClient(): SidecarClient {
         client?.let { return it }
-        val base = project.basePath ?: "."
-        val created = SidecarClient("$base/packages/core/dist/server.js")
+        val created = SidecarClient(SidecarLocator.locate(project.basePath))
         created.start()
         client = created
         return created

@@ -43,6 +43,58 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run test
 
+  package:
+    name: package (installable artifacts)
+    runs-on: ubuntu-latest
+    # Builds both installable artifacts with the Agent Core sidecar bundled in
+    # and asserts the sidecar is present — the autonomous half of Phase 3
+    # (T-PRD10 / T-PRD11). "Loads in a clean sandbox" is human/IDE-gated and
+    # stays out of CI scope. See docs/adr/ADR-017.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - run: pnpm install --frozen-lockfile
+      # Build the Core sidecar first so both packaging steps can bundle it.
+      - run: pnpm run build
+
+      - name: Package VSIX
+        working-directory: clients/vscode
+        run: pnpm run package
+
+      - name: Assert sidecar is bundled in the VSIX
+        working-directory: clients/vscode
+        run: unzip -l event4u-agent.vsix | grep -q 'extension/sidecar/server.js'
+
+      - name: Package JetBrains plugin ZIP
+        working-directory: clients/jetbrains
+        run: |
+          gradle wrapper --gradle-version 8.11.1
+          ./gradlew buildPlugin --no-daemon
+
+      - name: Assert sidecar is bundled in the JetBrains ZIP
+        working-directory: clients/jetbrains
+        run: unzip -l build/distributions/*.zip | grep -q 'sidecar/server.js'
+
   jetbrains:
     name: jetbrains (gradle check)
     runs-on: ubuntu-latest

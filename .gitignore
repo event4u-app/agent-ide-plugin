@@ -14,6 +14,10 @@ coverage/
 *.zip
 *.tar.gz
 
+# Bundled sidecar + copied LICENSE (build output of the packaging step)
+clients/vscode/sidecar/
+clients/vscode/LICENSE
+
 # Kotlin / Gradle (clients/jetbrains)
 .gradle/
 .kotlin/
