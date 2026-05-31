@@ -150,3 +150,56 @@ data class TerminalResizeRequest(
 data class TerminalResizeResponse(
     val ack: Boolean,
 )
+
+/** Per-turn token usage on the wire (camelCase). */
+@Serializable
+data class ChatUsage(
+    val inputTokens: Int,
+    val outputTokens: Int,
+    val cacheReadTokens: Int? = null,
+    val cacheWriteTokens: Int? = null,
+)
+
+/** The single turn-cost shape both clients format. mode is api | cli. */
+@Serializable
+data class ChatCost(
+    val model: String,
+    val mode: String,
+    val totalUsd: Double,
+    val isEstimate: Boolean,
+)
+
+/** Start a streamed chat turn. scope (per-turn retrieval) is TS-only for the slice. */
+@Serializable
+data class ChatSendRequest(
+    val conversationId: String,
+    val message: String,
+    val providerId: String? = null,
+)
+
+/** Data of each done:false envelope: one streamed assistant token. */
+@Serializable
+data class ChatTokenEvent(
+    val token: String,
+)
+
+/** Data of the terminal done:true envelope: the full turn result. */
+@Serializable
+data class ChatSendResponse(
+    val messageId: String,
+    val text: String,
+    val usage: ChatUsage,
+    val cost: ChatCost,
+    val cancelled: Boolean,
+    val stopReason: String,
+)
+
+@Serializable
+data class ChatCancelRequest(
+    val conversationId: String,
+)
+
+@Serializable
+data class ChatCancelResponse(
+    val cancelled: Boolean,
+)

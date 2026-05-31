@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ChatCostSchema,
+  ChatSendRequestSchema,
+  ChatSendResponseSchema,
+  ChatTokenEventSchema,
   ConnectRequestSchema,
   ContextScopeSchema,
   EchoRequestSchema,
@@ -142,9 +146,81 @@ describe('terminal schemas (Phase 9)', () => {
   });
 });
 
+describe('chat schemas (vertical slice)', () => {
+  it('chatSend request requires conversationId + message; provider/scope optional', () => {
+    const req = ChatSendRequestSchema.parse({ conversationId: 'c1', message: 'hi' });
+    expect(req.conversationId).toBe('c1');
+    expect(req.providerId).toBeUndefined();
+    const scoped = ChatSendRequestSchema.parse({
+      conversationId: 'c1',
+      message: 'hi',
+      providerId: 'anthropic',
+      scope: { kind: 'roots', rootIds: ['r1'] },
+    });
+    expect(scoped.scope).toEqual({ kind: 'roots', rootIds: ['r1'] });
+    expect(() => ChatSendRequestSchema.parse({ message: 'hi' })).toThrow();
+  });
+
+  it('token event carries one streamed token', () => {
+    expect(ChatTokenEventSchema.parse({ token: 'abc' }).token).toBe('abc');
+  });
+
+  // T-VS12 — the cost shape is the single source both clients only FORMAT.
+  it('cost is the single shared shape: model + mode + totalUsd + isEstimate', () => {
+    const cost = ChatCostSchema.parse({
+      model: 'claude-sonnet-4-6',
+      mode: 'cli',
+      totalUsd: 0.0042,
+      isEstimate: true,
+    });
+    expect(cost).toEqual({
+      model: 'claude-sonnet-4-6',
+      mode: 'cli',
+      totalUsd: 0.0042,
+      isEstimate: true,
+    });
+    // No extra per-client fields creep in — the contract is exactly these four.
+    expect(Object.keys(ChatCostSchema.shape).sort()).toEqual([
+      'isEstimate',
+      'mode',
+      'model',
+      'totalUsd',
+    ]);
+    // A negative cost is rejected.
+    expect(() =>
+      ChatCostSchema.parse({ model: 'm', mode: 'api', totalUsd: -1, isEstimate: false }),
+    ).toThrow();
+  });
+
+  it('response carries text, usage, cost, cancelled and stopReason', () => {
+    const res = ChatSendResponseSchema.parse({
+      messageId: 'm1',
+      text: 'hello world',
+      usage: { inputTokens: 10, outputTokens: 5 },
+      cost: { model: 'test-model', mode: 'api', totalUsd: 0.001, isEstimate: false },
+      cancelled: false,
+      stopReason: 'end_turn',
+    });
+    expect(res.cost.mode).toBe('api');
+    expect(res.usage.outputTokens).toBe(5);
+    expect(() =>
+      ChatSendResponseSchema.parse({
+        messageId: 'm1',
+        text: 't',
+        usage: { inputTokens: 1, outputTokens: 1 },
+        cost: { model: 'm', mode: 'bogus', totalUsd: 0, isEstimate: true },
+        cancelled: false,
+        stopReason: 'end_turn',
+      }),
+    ).toThrow();
+  });
+});
+
 describe('method registry', () => {
-  it('exposes the multi-project + terminal methods alongside ping/echo', () => {
+  it('exposes the multi-project + terminal + chat methods alongside ping/echo', () => {
     expect(Object.keys(Methods).sort()).toEqual([
+      'chatCancel',
+      'chatSend',
       'connect',
       'echo',
       'ping',

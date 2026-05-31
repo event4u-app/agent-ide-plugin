@@ -176,6 +176,62 @@ const classes: DataClass[] = [
     name: 'TerminalResizeResponse',
     fields: [{ name: 'ack', kotlinType: 'Boolean' }],
   },
+
+  // --- chat send / cancel (vertical slice, T-VS01 / T-VS02) ---
+  {
+    name: 'ChatUsage',
+    doc: 'Per-turn token usage on the wire (camelCase).',
+    fields: [
+      { name: 'inputTokens', kotlinType: 'Int' },
+      { name: 'outputTokens', kotlinType: 'Int' },
+      { name: 'cacheReadTokens', kotlinType: 'Int?', default: 'null' },
+      { name: 'cacheWriteTokens', kotlinType: 'Int?', default: 'null' },
+    ],
+  },
+  {
+    name: 'ChatCost',
+    doc: 'The single turn-cost shape both clients format. mode is api | cli.',
+    fields: [
+      { name: 'model', kotlinType: 'String' },
+      { name: 'mode', kotlinType: 'String' },
+      { name: 'totalUsd', kotlinType: 'Double' },
+      { name: 'isEstimate', kotlinType: 'Boolean' },
+    ],
+  },
+  {
+    name: 'ChatSendRequest',
+    doc: 'Start a streamed chat turn. scope (per-turn retrieval) is TS-only for the slice.',
+    fields: [
+      { name: 'conversationId', kotlinType: 'String' },
+      { name: 'message', kotlinType: 'String' },
+      { name: 'providerId', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'ChatTokenEvent',
+    doc: 'Data of each done:false envelope: one streamed assistant token.',
+    fields: [{ name: 'token', kotlinType: 'String' }],
+  },
+  {
+    name: 'ChatSendResponse',
+    doc: 'Data of the terminal done:true envelope: the full turn result.',
+    fields: [
+      { name: 'messageId', kotlinType: 'String' },
+      { name: 'text', kotlinType: 'String' },
+      { name: 'usage', kotlinType: 'ChatUsage' },
+      { name: 'cost', kotlinType: 'ChatCost' },
+      { name: 'cancelled', kotlinType: 'Boolean' },
+      { name: 'stopReason', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'ChatCancelRequest',
+    fields: [{ name: 'conversationId', kotlinType: 'String' }],
+  },
+  {
+    name: 'ChatCancelResponse',
+    fields: [{ name: 'cancelled', kotlinType: 'Boolean' }],
+  },
 ];
 
 function emitClass(dc: DataClass): string {
