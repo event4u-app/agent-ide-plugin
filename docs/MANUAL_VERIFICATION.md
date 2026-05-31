@@ -346,6 +346,34 @@ chat history, index a target repo BM25-only vs hybrid, compare MRR / Recall@10.
 - 2026-MM-DD · Product-readiness Phase 2 verified by <name> · IDE <vscode|phpstorm> · perm ✓ cost ✓ index ✓ mode ✓ scope ✓
 ```
 
+## Product readiness Phase 4 — git loop (IDE render)
+
+> Pure-core foundation shipped under unit tests + CI (ADR-015): the diff-driven
+> commit-message builder + Conventional-Commit parser (`git/commit-message.ts`),
+> the PR-description builder + bounded commit-log reader + house-rule sanitisers
+> (`git/pr-description.ts`, `git/text-rules.ts`), and the review change-summary
+> derivation (`git/review-summary.ts`). The items below are the **deferred card
+> render + turn wiring** — they need a running IDE, so they stay `[~]` until they
+> land and a human signs the row. The Core never runs a git mutation.
+
+### T-PRD14 — commit-message card
+
+- [ ] In `commit` mode, the staged diff drives `buildCommitMessagePrompt`; the streamed reply is shown as an editable Conventional-Commit message. A reply that fails `parseCommitMessage` surfaces the errors and re-prompts; accepting fills the commit box — the Core never commits.
+
+### T-PRD15 — PR-description card
+
+- [ ] From the branch (`base..HEAD`), `readCommitLog` + `buildPrDescriptionPrompt` produce a PR body; `sanitizePrBody` / `sanitizePrTitle` strip any attribution footer / decorative emoji before render, and the surfaced `warnings` note what was removed.
+
+### T-PRD16 — review change-summary card
+
+- [ ] In `review` mode, `runReview` over the current diff feeds `summarizeReview`; the card shows files changed, +/- line counts, per-severity finding counts, and the top findings.
+
+### Record the result
+
+```
+- 2026-MM-DD · Product-readiness Phase 4 verified by <name> · IDE <vscode|phpstorm> · commit-msg ✓ pr-desc ✓ review-summary ✓
+```
+
 ## Verification log
 
 > Append entries below. Newest at the top. One line per verification, signed by the human who walked the list.
