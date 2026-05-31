@@ -78,3 +78,75 @@ data class WorkspaceFoldersChangedResponse(
 data class RootStatusResponse(
     val status: List<RootIndexStatus>,
 )
+
+/** One chunk of raw PTY output; seq is monotonic per session. */
+@Serializable
+data class OutputChunk(
+    val seq: Int,
+    val data: String,
+    val at: String,
+)
+
+/** A discrete input request the session is blocked on. */
+@Serializable
+data class PendingInput(
+    val inputRequestId: String,
+    val prompt: String,
+    val at: String,
+)
+
+/** Replay window returned on subscribe / reconnect. */
+@Serializable
+data class ReplaySlice(
+    val chunks: List<OutputChunk>,
+    val droppedChunks: Int,
+    val droppedBytes: Int,
+    val firstSeqAvailable: Int,
+    val nextSeq: Int,
+    val restartRequired: Boolean,
+)
+
+/** Subscribe to a session; the Core streams terminal events on this id. */
+@Serializable
+data class TerminalSubscribeRequest(
+    val commandId: String,
+    val surfaceId: String,
+    val replayFromSeq: Int = 0,
+)
+
+/** First envelope of the subscribe stream — replay + current state. */
+@Serializable
+data class TerminalSubscribeResponse(
+    val subscriptionId: String,
+    val status: String,
+    val pendingInput: PendingInput? = null,
+    val replay: ReplaySlice,
+)
+
+/** Write to stdin — raw, or answer a pending request (first-write-wins). */
+@Serializable
+data class TerminalInputRequest(
+    val commandId: String,
+    val surfaceId: String,
+    val data: String,
+    val inputRequestId: String? = null,
+)
+
+@Serializable
+data class TerminalInputResponse(
+    val accepted: Boolean,
+    val reason: String? = null,
+    val winningSurfaceId: String? = null,
+)
+
+@Serializable
+data class TerminalResizeRequest(
+    val commandId: String,
+    val cols: Int,
+    val rows: Int,
+)
+
+@Serializable
+data class TerminalResizeResponse(
+    val ack: Boolean,
+)

@@ -12,6 +12,7 @@
 | [ADR-006](ADR-006-mcp-client-and-memory-format.md) | MCP Client (hand-rolled, zero-dep) + Local Memory Format (md+frontmatter) | Proposed | 2026-05-30 | road-to-v1-0 Phase 11 (T-1101/02/04/05/06) |
 | [ADR-007](ADR-007-pricing-signature-and-telemetry.md) | Pricing-Book Signature (Ed25519 over Sigstore for v0) + Telemetry Privacy Floor | Proposed | 2026-05-31 | road-to-v1-0 Phase 14 (T-1401/1403/1404) |
 | [ADR-008](ADR-008-chat-persistence-and-checkpoints.md) | Chat Persistence (append-only JSONL event log) + Copy-on-Write Forking + Metadata-only Checkpoints | Proposed | 2026-05-31 | road-to-v1-0 Phase 13 (T-1301/1302/1303/1307) |
+| [ADR-009](ADR-009-live-terminal-core.md) | Live PTY Terminal Core — Interface+Fake PTY, Streaming-Subscribe Push, Dual-Cap Ring Buffer, First-Write-Wins Input | Proposed | 2026-05-31 | road-to-v1-0 Phase 9 (T-901/902/903/905/906) |
 
 ## Status legend
 

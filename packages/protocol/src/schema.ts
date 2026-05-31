@@ -157,6 +157,129 @@ export const ContextScopeSchema = z.discriminatedUnion('kind', [
 ]);
 export type ContextScope = z.infer<typeof ContextScopeSchema>;
 
+// --- live terminal (Phase 9, T-903) -------------------------------------
+
+/**
+ * Live PTY terminal wire schemas. Server→client push is modelled as a
+ * long-lived `terminalSubscribe` STREAMING request (AI council 2026-05-31,
+ * UNANIMOUS): the client subscribes with a `messageId`, the Core streams
+ * {@link TerminalEventSchema} payloads with `done:false` on that id until the
+ * session exits/disposes (`done:true`). No new fire-and-forget notification
+ * concept — ADR-003's request/response uniformity stays intact. The Core maps
+ * many subscribe `messageId`s to one session, so a reconnecting surface just
+ * re-subscribes with `replayFromSeq`.
+ */
+export const TerminalStatusSchema = z.enum(['pending', 'running', 'waiting-input', 'done']);
+export type TerminalStatus = z.infer<typeof TerminalStatusSchema>;
+
+/** One chunk of raw (ANSI-intact) PTY output; `seq` is monotonic per session. */
+export const OutputChunkSchema = z.object({
+  seq: z.number().int().nonnegative(),
+  data: z.string(),
+  at: z.string(),
+});
+export type OutputChunk = z.infer<typeof OutputChunkSchema>;
+
+/** A discrete input request the session is blocked on (first-write-wins scope). */
+export const PendingInputSchema = z.object({
+  inputRequestId: z.string().min(1),
+  prompt: z.string(),
+  at: z.string(),
+});
+export type PendingInput = z.infer<typeof PendingInputSchema>;
+
+/** Replay window returned on subscribe / reconnect. */
+export const ReplaySliceSchema = z.object({
+  chunks: z.array(OutputChunkSchema),
+  droppedChunks: z.number().int().nonnegative(),
+  droppedBytes: z.number().int().nonnegative(),
+  firstSeqAvailable: z.number().int().nonnegative(),
+  nextSeq: z.number().int().nonnegative(),
+  /** Requested seq fell behind the buffer window → renderer cold-boots. */
+  restartRequired: z.boolean(),
+});
+export type ReplaySlice = z.infer<typeof ReplaySliceSchema>;
+
+/** The typed event union streamed on the subscribe channel. */
+export const TerminalEventSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('output'), commandId: z.string().min(1), chunk: OutputChunkSchema }),
+  z.object({
+    kind: z.literal('status'),
+    commandId: z.string().min(1),
+    status: TerminalStatusSchema,
+  }),
+  z.object({
+    kind: z.literal('inputRequested'),
+    commandId: z.string().min(1),
+    pending: PendingInputSchema,
+  }),
+  z.object({
+    kind: z.literal('inputConflict'),
+    commandId: z.string().min(1),
+    inputRequestId: z.string().min(1),
+    winningSurfaceId: z.string().min(1),
+    losingSurfaceId: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('exit'),
+    commandId: z.string().min(1),
+    exitCode: z.number().int(),
+    signal: z.number().int().optional(),
+    durationMs: z.number().int().nonnegative(),
+  }),
+  z.object({ kind: z.literal('error'), commandId: z.string().min(1), message: z.string() }),
+]);
+export type TerminalEvent = z.infer<typeof TerminalEventSchema>;
+
+// terminalSubscribe — long-lived streaming request.
+export const TerminalSubscribeRequestSchema = z.object({
+  commandId: z.string().min(1),
+  surfaceId: z.string().min(1),
+  /** Replay from this seq; default 0 = full snapshot. */
+  replayFromSeq: z.number().int().nonnegative().default(0),
+});
+export type TerminalSubscribeRequest = z.infer<typeof TerminalSubscribeRequestSchema>;
+
+/** First envelope of the subscribe stream — the replay + current state. */
+export const TerminalSubscribeResponseSchema = z.object({
+  subscriptionId: z.string().min(1),
+  status: TerminalStatusSchema,
+  pendingInput: PendingInputSchema.nullable(),
+  replay: ReplaySliceSchema,
+});
+export type TerminalSubscribeResponse = z.infer<typeof TerminalSubscribeResponseSchema>;
+
+// terminalInput — write to stdin (raw, or answer a pending request).
+export const TerminalInputRequestSchema = z.object({
+  commandId: z.string().min(1),
+  surfaceId: z.string().min(1),
+  data: z.string(),
+  /** The pending request being answered; omit for a raw write. */
+  inputRequestId: z.string().min(1).optional(),
+});
+export type TerminalInputRequest = z.infer<typeof TerminalInputRequestSchema>;
+
+export const TerminalInputResponseSchema = z.object({
+  accepted: z.boolean(),
+  /** Set when rejected by first-write-wins arbitration. */
+  reason: z.enum(['no-session', 'session-done', 'already-submitted', 'stale-request']).optional(),
+  winningSurfaceId: z.string().min(1).optional(),
+});
+export type TerminalInputResponse = z.infer<typeof TerminalInputResponseSchema>;
+
+// terminalResize — resize the PTY.
+export const TerminalResizeRequestSchema = z.object({
+  commandId: z.string().min(1),
+  cols: z.number().int().positive(),
+  rows: z.number().int().positive(),
+});
+export type TerminalResizeRequest = z.infer<typeof TerminalResizeRequestSchema>;
+
+export const TerminalResizeResponseSchema = z.object({
+  ack: z.boolean(),
+});
+export type TerminalResizeResponse = z.infer<typeof TerminalResizeResponseSchema>;
+
 // --- method registry ----------------------------------------------------
 
 /**
@@ -173,6 +296,12 @@ export const Methods = {
     response: WorkspaceFoldersChangedResponseSchema,
   },
   rootStatus: { request: RootStatusRequestSchema, response: RootStatusResponseSchema },
+  terminalSubscribe: {
+    request: TerminalSubscribeRequestSchema,
+    response: TerminalSubscribeResponseSchema,
+  },
+  terminalInput: { request: TerminalInputRequestSchema, response: TerminalInputResponseSchema },
+  terminalResize: { request: TerminalResizeRequestSchema, response: TerminalResizeResponseSchema },
 } as const;
 
 export type MethodName = keyof typeof Methods;
