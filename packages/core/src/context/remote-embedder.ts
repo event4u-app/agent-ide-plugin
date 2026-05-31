@@ -1,3 +1,4 @@
+import { throwIfAborted } from '../abort.js';
 import { FakeEmbedder, TransformersEmbedder, l2normalize, type Embedder } from './embedder.js';
 
 /**
@@ -45,8 +46,9 @@ export class RemoteEmbedder implements Embedder {
     this.endpoint = config.endpoint ?? ENDPOINTS[config.provider];
   }
 
-  async embed(texts: string[]): Promise<Float32Array[]> {
+  async embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]> {
     if (texts.length === 0) return [];
+    throwIfAborted(signal);
     const res = await this.fetchFn(this.endpoint, {
       method: 'POST',
       headers: {
@@ -54,6 +56,8 @@ export class RemoteEmbedder implements Embedder {
         authorization: `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify({ input: texts, model: this.config.model }),
+      // Stop aborts the in-flight HTTP request itself, not just at the boundary.
+      signal,
     });
     if (!res.ok) {
       throw new Error(`Embedding request failed (${this.config.provider} ${res.status})`);

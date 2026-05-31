@@ -1,3 +1,4 @@
+import { throwIfAborted } from '../abort.js';
 import { CodeRetriever, type SymbolMatch } from './bm25.js';
 import type { Embedder } from './embedder.js';
 import { EmbeddingCache } from './embedding-cache.js';
@@ -111,7 +112,13 @@ export class ContextEngine {
   }
 
   /** Index (or re-index) one file in a root segment: refresh symbols + content. */
-  async indexFile(filePath: string, content: string, rootId = DEFAULT_ROOT_ID): Promise<void> {
+  async indexFile(
+    filePath: string,
+    content: string,
+    rootId = DEFAULT_ROOT_ID,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    throwIfAborted(signal);
     const { symbols, chunks } = await this.indexer.indexFile(filePath, content);
     const seg = this.segment(rootId);
     seg.retriever.setFileSymbols(filePath, symbols);
@@ -127,7 +134,10 @@ export class ContextEngine {
 
     // Phase 8 — embed chunks (cache-deduped) into the vector store, if enabled.
     if (this.embeddingCache && this.vectorStore && chunks.length > 0) {
-      const embeddings = await this.embeddingCache.embed(chunks.map((c) => c.getText()));
+      const embeddings = await this.embeddingCache.embed(
+        chunks.map((c) => c.getText()),
+        signal,
+      );
       this.vectorStore.setFileVectors(
         rootId,
         filePath,
@@ -229,16 +239,22 @@ export class ContextEngine {
    * embedder, the vector list is empty so the result is the lexical ranking
    * alone. Returns chunk refs ranked best-first (expand via `snippetsForChunks`).
    */
-  async hybridRetrieve(query: string, k: number, opts: RetrieveOptions = {}): Promise<ChunkRef[]> {
+  async hybridRetrieve(
+    query: string,
+    k: number,
+    opts: RetrieveOptions = {},
+    signal?: AbortSignal,
+  ): Promise<ChunkRef[]> {
     if (opts.rootIds && opts.rootIds.length === 0) return [];
     if (k <= 0) return [];
+    throwIfAborted(signal);
     const depth = Math.max(k * 4, 20);
     const subQueries = await this.queryExpander.expand(query);
 
     const perQueryFused: RankedItem<ChunkRef>[][] = [];
     for (const subQuery of subQueries) {
       const lexical = this.lexicalChunkList(subQuery, depth, opts);
-      const vector = await this.vectorChunkList(subQuery, depth, opts.rootIds);
+      const vector = await this.vectorChunkList(subQuery, depth, opts.rootIds, signal);
       // Fuse lexical + vector for this sub-query into one ranked list.
       const fused = rrfFuse([lexical, vector]).map((f) => ({ key: f.key, item: f.item }));
       perQueryFused.push(fused);
@@ -278,9 +294,10 @@ export class ContextEngine {
     query: string,
     k: number,
     rootIds?: string[],
+    signal?: AbortSignal,
   ): Promise<RankedItem<ChunkRef>[]> {
     if (!this.vectorStore || !this.embedder) return [];
-    const [qVec] = await this.embedder.embed([query]);
+    const [qVec] = await this.embedder.embed([query], signal);
     if (!qVec) return [];
     const hits = this.vectorStore.query(qVec, k, rootIds);
     return dedupeRanked(hits.map(vectorHitToChunkRef));
