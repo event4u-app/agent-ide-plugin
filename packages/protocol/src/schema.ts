@@ -455,6 +455,137 @@ export const ToolCallEventSchema = z.discriminatedUnion('kind', [
 ]);
 export type ToolCallEvent = z.infer<typeof ToolCallEventSchema>;
 
+// --- git loop (product-readiness Phase 4 transport) ---------------------
+
+/**
+ * The git-loop RPC surface (T-PRD14/15/16 transport). Exposes the shipped
+ * pure-core builders (`git/commit-message.ts`, `pr-description.ts`,
+ * `review-summary.ts`) as full-turn methods: the Core reads the diff, runs the
+ * provider, and returns the PARSED / SANITISED result — never a raw model reply
+ * (AI council 2026-05-31, codex-cli 0.134.0 + gemini 0.41.2, UNANIMOUS forks
+ * A1/B1/C1/D1/E1/F1). The Core NEVER commits or opens a PR — it returns
+ * editable text the IDE card surfaces. The card render itself stays IDE-runtime.
+ */
+
+/** Which diff a git method reasons over. `range` requires `base`. */
+export const GitDiffSourceSchema = z.enum(['staged', 'unstaged', 'range']);
+export type GitDiffSource = z.infer<typeof GitDiffSourceSchema>;
+
+/** Wire mirror of the core `ParsedCommitMessage` (`git/commit-message.ts`). */
+export const GitCommitMessageSchema = z.object({
+  type: z.string(),
+  scope: z.string().optional(),
+  breaking: z.boolean(),
+  subject: z.string(),
+  body: z.string().optional(),
+});
+export type GitCommitMessage = z.infer<typeof GitCommitMessageSchema>;
+
+export const GitCommitMessageRequestSchema = z.object({
+  /** Workspace root the diff is read from (F1 — cwd on the wire, multi-root ready). */
+  cwd: z.string().min(1),
+  /** Default `staged`. */
+  source: GitDiffSourceSchema.optional(),
+  /** Required when `source === 'range'`. */
+  base: z.string().min(1).optional(),
+  /** Defaults to `HEAD` for a range. */
+  head: z.string().min(1).optional(),
+  /** Current branch — surfaced as context only. */
+  branch: z.string().optional(),
+  /** Provider/backend selector; omitted = the Core's default. */
+  providerId: z.string().min(1).optional(),
+  /** Free-text steer appended to the turn. */
+  extraInstruction: z.string().optional(),
+});
+export type GitCommitMessageRequest = z.infer<typeof GitCommitMessageRequestSchema>;
+
+/**
+ * Single terminal result (C1): the parsed message + its assembled text on
+ * success, or the structured parse errors after the bounded re-prompt (D1).
+ */
+export const GitCommitMessageResponseSchema = z.object({
+  ok: z.boolean(),
+  /** The parsed message when `ok`, else `null`. */
+  message: GitCommitMessageSchema.nullable(),
+  /** The assembled commit-message text (header + body) for the editor; `''` when not ok. */
+  text: z.string(),
+  /** Parse/validation errors when `!ok`; empty when ok. */
+  errors: z.array(z.string()),
+  /** How many model attempts were made (≥ 1). */
+  attempts: z.number().int().nonnegative(),
+});
+export type GitCommitMessageResponse = z.infer<typeof GitCommitMessageResponseSchema>;
+
+export const GitPrDescriptionRequestSchema = z.object({
+  cwd: z.string().min(1),
+  /** The target / merge-base ref (e.g. `main`) — the PR is `base..head`. */
+  base: z.string().min(1),
+  /** Defaults to `HEAD`. */
+  head: z.string().min(1).optional(),
+  branch: z.string().optional(),
+  providerId: z.string().min(1).optional(),
+  extraInstruction: z.string().optional(),
+});
+export type GitPrDescriptionRequest = z.infer<typeof GitPrDescriptionRequestSchema>;
+
+/** Sanitised PR draft — house rules already enforced in core (C1). */
+export const GitPrDescriptionResponseSchema = z.object({
+  /** Editable title candidate, sanitised (emoji-free, attribution stripped). */
+  title: z.string(),
+  /** Sanitised PR body (GitHub-flavoured Markdown). */
+  body: z.string(),
+  /** Human-readable notes on what the sanitiser stripped (empty → nothing). */
+  warnings: z.array(z.string()),
+  /** Total commits in `base..head` (before the readCommitLog cap). */
+  commitCount: z.number().int().nonnegative(),
+  /** `true` when older commits were dropped to bound the prompt. */
+  truncated: z.boolean(),
+});
+export type GitPrDescriptionResponse = z.infer<typeof GitPrDescriptionResponseSchema>;
+
+/** Exhaustive per-severity finding count (every severity present, 0 when none). */
+export const GitSeverityCountSchema = z.object({
+  severity: z.string(),
+  count: z.number().int().nonnegative(),
+});
+export type GitSeverityCount = z.infer<typeof GitSeverityCountSchema>;
+
+/**
+ * Minimal wire view of one review finding (E1 — the full internal `ReviewIssue`
+ * carries votes/confidence/proposedFix that stay out of the protocol).
+ */
+export const GitReviewFindingSchema = z.object({
+  file: z.string(),
+  /** 1-based line, or `null` when the finding is file-level. */
+  line: z.number().int().nullable(),
+  severity: z.string(),
+  category: z.string(),
+  description: z.string(),
+});
+export type GitReviewFinding = z.infer<typeof GitReviewFindingSchema>;
+
+export const GitReviewSummaryRequestSchema = z.object({
+  cwd: z.string().min(1),
+  /** Default `unstaged` (matches `runReview`). */
+  source: GitDiffSourceSchema.optional(),
+  base: z.string().min(1).optional(),
+  head: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
+});
+export type GitReviewSummaryRequest = z.infer<typeof GitReviewSummaryRequestSchema>;
+
+/** Wire mirror of the core `ChangeSummary` (`git/review-summary.ts`). */
+export const GitReviewSummaryResponseSchema = z.object({
+  filesChanged: z.number().int().nonnegative(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  findingsBySeverity: z.array(GitSeverityCountSchema),
+  totalFindings: z.number().int().nonnegative(),
+  potentialFindings: z.number().int().nonnegative(),
+  topFindings: z.array(GitReviewFindingSchema),
+});
+export type GitReviewSummaryResponse = z.infer<typeof GitReviewSummaryResponseSchema>;
+
 // --- method registry ----------------------------------------------------
 
 /**
@@ -479,6 +610,18 @@ export const Methods = {
   terminalResize: { request: TerminalResizeRequestSchema, response: TerminalResizeResponseSchema },
   chatSend: { request: ChatSendRequestSchema, response: ChatSendResponseSchema },
   chatCancel: { request: ChatCancelRequestSchema, response: ChatCancelResponseSchema },
+  gitCommitMessage: {
+    request: GitCommitMessageRequestSchema,
+    response: GitCommitMessageResponseSchema,
+  },
+  gitPrDescription: {
+    request: GitPrDescriptionRequestSchema,
+    response: GitPrDescriptionResponseSchema,
+  },
+  gitReviewSummary: {
+    request: GitReviewSummaryRequestSchema,
+    response: GitReviewSummaryResponseSchema,
+  },
 } as const;
 
 export type MethodName = keyof typeof Methods;

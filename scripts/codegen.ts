@@ -260,6 +260,108 @@ const classes: DataClass[] = [
       { name: 'files', kotlinType: 'List<ReviewFile>' },
     ],
   },
+  // --- git loop (product-readiness Phase 4 transport, T-PRD14/15/16) -------
+  {
+    name: 'GitCommitMessage',
+    doc: 'Wire mirror of the core ParsedCommitMessage.',
+    fields: [
+      { name: 'type', kotlinType: 'String' },
+      { name: 'scope', kotlinType: 'String?', default: 'null' },
+      { name: 'breaking', kotlinType: 'Boolean' },
+      { name: 'subject', kotlinType: 'String' },
+      { name: 'body', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'GitCommitMessageRequest',
+    doc: 'gitCommitMessage request — cwd + diff selectors.',
+    fields: [
+      { name: 'cwd', kotlinType: 'String' },
+      { name: 'source', kotlinType: 'String?', default: 'null' },
+      { name: 'base', kotlinType: 'String?', default: 'null' },
+      { name: 'head', kotlinType: 'String?', default: 'null' },
+      { name: 'branch', kotlinType: 'String?', default: 'null' },
+      { name: 'providerId', kotlinType: 'String?', default: 'null' },
+      { name: 'extraInstruction', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'GitCommitMessageResponse',
+    doc: 'Parsed commit message + assembled text, or the parse errors after the bounded re-prompt.',
+    fields: [
+      { name: 'ok', kotlinType: 'Boolean' },
+      { name: 'message', kotlinType: 'GitCommitMessage?', default: 'null' },
+      { name: 'text', kotlinType: 'String' },
+      { name: 'errors', kotlinType: 'List<String>', default: 'emptyList()' },
+      { name: 'attempts', kotlinType: 'Int' },
+    ],
+  },
+  {
+    name: 'GitPrDescriptionRequest',
+    doc: 'gitPrDescription request — the PR is base..head.',
+    fields: [
+      { name: 'cwd', kotlinType: 'String' },
+      { name: 'base', kotlinType: 'String' },
+      { name: 'head', kotlinType: 'String?', default: 'null' },
+      { name: 'branch', kotlinType: 'String?', default: 'null' },
+      { name: 'providerId', kotlinType: 'String?', default: 'null' },
+      { name: 'extraInstruction', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'GitPrDescriptionResponse',
+    doc: 'Sanitised PR draft — house rules already enforced in core.',
+    fields: [
+      { name: 'title', kotlinType: 'String' },
+      { name: 'body', kotlinType: 'String' },
+      { name: 'warnings', kotlinType: 'List<String>', default: 'emptyList()' },
+      { name: 'commitCount', kotlinType: 'Int' },
+      { name: 'truncated', kotlinType: 'Boolean' },
+    ],
+  },
+  {
+    name: 'GitSeverityCount',
+    doc: 'Exhaustive per-severity finding count.',
+    fields: [
+      { name: 'severity', kotlinType: 'String' },
+      { name: 'count', kotlinType: 'Int' },
+    ],
+  },
+  {
+    name: 'GitReviewFinding',
+    doc: 'Minimal wire view of one review finding (no votes/confidence leak).',
+    fields: [
+      { name: 'file', kotlinType: 'String' },
+      { name: 'line', kotlinType: 'Int?', default: 'null' },
+      { name: 'severity', kotlinType: 'String' },
+      { name: 'category', kotlinType: 'String' },
+      { name: 'description', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'GitReviewSummaryRequest',
+    doc: 'gitReviewSummary request — runs the review engine over the selected diff.',
+    fields: [
+      { name: 'cwd', kotlinType: 'String' },
+      { name: 'source', kotlinType: 'String?', default: 'null' },
+      { name: 'base', kotlinType: 'String?', default: 'null' },
+      { name: 'head', kotlinType: 'String?', default: 'null' },
+      { name: 'providerId', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'GitReviewSummaryResponse',
+    doc: 'Wire mirror of the core ChangeSummary.',
+    fields: [
+      { name: 'filesChanged', kotlinType: 'Int' },
+      { name: 'additions', kotlinType: 'Int' },
+      { name: 'deletions', kotlinType: 'Int' },
+      { name: 'findingsBySeverity', kotlinType: 'List<GitSeverityCount>', default: 'emptyList()' },
+      { name: 'totalFindings', kotlinType: 'Int' },
+      { name: 'potentialFindings', kotlinType: 'Int' },
+      { name: 'topFindings', kotlinType: 'List<GitReviewFinding>', default: 'emptyList()' },
+    ],
+  },
 ];
 
 // Discriminated unions → Kotlin sealed hierarchies (T-PRD04). TerminalEvent

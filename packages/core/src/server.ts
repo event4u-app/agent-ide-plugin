@@ -8,6 +8,12 @@ import {
   type EchoRequest,
   type EchoResponse,
   EchoRequestSchema,
+  type GitCommitMessageResponse,
+  GitCommitMessageRequestSchema,
+  type GitPrDescriptionResponse,
+  GitPrDescriptionRequestSchema,
+  type GitReviewSummaryResponse,
+  GitReviewSummaryRequestSchema,
   type PingResponse,
   PingRequestSchema,
   MethodNameSchema,
@@ -17,6 +23,7 @@ import {
 } from '@event4u-agent/protocol';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import type { ChatHandler, EnvelopeSink } from './chat/handler.js';
+import { type GitHandler, GitRequestError } from './git/handler.js';
 
 /** A handler maps a validated request payload to a response payload. */
 type Handler = (data: unknown) => Promise<unknown> | unknown;
@@ -40,6 +47,7 @@ export class Dispatcher {
   constructor(
     private readonly coordinator: WorkspaceCoordinator = new WorkspaceCoordinator(),
     private readonly chatHandler?: ChatHandler,
+    private readonly gitHandler?: GitHandler,
   ) {
     this.handlers = {
       ping: (): PingResponse => ({ result: 'pong' }),
@@ -62,7 +70,24 @@ export class Dispatcher {
         const req = ChatCancelRequestSchema.parse(data ?? {});
         return { cancelled: this.chatHandler?.cancel(req.conversationId) ?? false };
       },
+      gitCommitMessage: (data: unknown): Promise<GitCommitMessageResponse> =>
+        this.requireGit().commitMessage(GitCommitMessageRequestSchema.parse(data ?? {})),
+      gitPrDescription: (data: unknown): Promise<GitPrDescriptionResponse> =>
+        this.requireGit().prDescription(GitPrDescriptionRequestSchema.parse(data ?? {})),
+      gitReviewSummary: (data: unknown): Promise<GitReviewSummaryResponse> =>
+        this.requireGit().reviewSummary(GitReviewSummaryRequestSchema.parse(data ?? {})),
     };
+  }
+
+  /** The git handler or a coded error so absent wiring surfaces cleanly. */
+  private requireGit(): GitHandler {
+    if (!this.gitHandler) {
+      throw new GitRequestError(
+        'git_not_configured',
+        'No git handler is configured on this Core instance.',
+      );
+    }
+    return this.gitHandler;
   }
 
   /** Release the workspace coordinator's timers (shutdown). */
@@ -128,7 +153,13 @@ export class Dispatcher {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return this.errorEnvelope(envelope.messageId, 'handler_error', message);
+      // A handler MAY carry a string `code` (e.g. `git_not_configured`); honour
+      // it so the client sees the specific cause, mirroring the `chatSend` path.
+      const code =
+        typeof (error as { code?: unknown }).code === 'string'
+          ? (error as { code: string }).code
+          : 'handler_error';
+      return this.errorEnvelope(envelope.messageId, code, message);
     }
   }
 

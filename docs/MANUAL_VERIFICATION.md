@@ -355,6 +355,15 @@ chat history, index a target repo BM25-only vs hybrid, compare MRR / Recall@10.
 > derivation (`git/review-summary.ts`). The items below are the **deferred card
 > render + turn wiring** — they need a running IDE, so they stay `[~]` until they
 > land and a human signs the row. The Core never runs a git mutation.
+>
+> **Transport landed (ADR-016, feat/product-readiness-git-transport).** The
+> three builders are now reachable as full-turn RPC methods —
+> `gitCommitMessage`, `gitPrDescription`, `gitReviewSummary` — over a dedicated
+> injected `GitHandler` (mirrors `ChatHandler`); each reads the diff from the
+> request `cwd`, runs the provider, and returns the parsed / sanitised result in
+> one envelope (no raw-token streaming). Kotlin DTOs codegen'd; unit + dispatcher
+> tests green; `task jetbrains:check` green. The cards below consume these
+> methods; they stay the IDE-render half.
 
 ### T-PRD14 — commit-message card
 

@@ -225,6 +225,98 @@ data class ToolReview(
     val files: List<ReviewFile>,
 )
 
+/** Wire mirror of the core ParsedCommitMessage. */
+@Serializable
+data class GitCommitMessage(
+    val type: String,
+    val scope: String? = null,
+    val breaking: Boolean,
+    val subject: String,
+    val body: String? = null,
+)
+
+/** gitCommitMessage request — cwd + diff selectors. */
+@Serializable
+data class GitCommitMessageRequest(
+    val cwd: String,
+    val source: String? = null,
+    val base: String? = null,
+    val head: String? = null,
+    val branch: String? = null,
+    val providerId: String? = null,
+    val extraInstruction: String? = null,
+)
+
+/** Parsed commit message + assembled text, or the parse errors after the bounded re-prompt. */
+@Serializable
+data class GitCommitMessageResponse(
+    val ok: Boolean,
+    val message: GitCommitMessage? = null,
+    val text: String,
+    val errors: List<String> = emptyList(),
+    val attempts: Int,
+)
+
+/** gitPrDescription request — the PR is base..head. */
+@Serializable
+data class GitPrDescriptionRequest(
+    val cwd: String,
+    val base: String,
+    val head: String? = null,
+    val branch: String? = null,
+    val providerId: String? = null,
+    val extraInstruction: String? = null,
+)
+
+/** Sanitised PR draft — house rules already enforced in core. */
+@Serializable
+data class GitPrDescriptionResponse(
+    val title: String,
+    val body: String,
+    val warnings: List<String> = emptyList(),
+    val commitCount: Int,
+    val truncated: Boolean,
+)
+
+/** Exhaustive per-severity finding count. */
+@Serializable
+data class GitSeverityCount(
+    val severity: String,
+    val count: Int,
+)
+
+/** Minimal wire view of one review finding (no votes/confidence leak). */
+@Serializable
+data class GitReviewFinding(
+    val file: String,
+    val line: Int? = null,
+    val severity: String,
+    val category: String,
+    val description: String,
+)
+
+/** gitReviewSummary request — runs the review engine over the selected diff. */
+@Serializable
+data class GitReviewSummaryRequest(
+    val cwd: String,
+    val source: String? = null,
+    val base: String? = null,
+    val head: String? = null,
+    val providerId: String? = null,
+)
+
+/** Wire mirror of the core ChangeSummary. */
+@Serializable
+data class GitReviewSummaryResponse(
+    val filesChanged: Int,
+    val additions: Int,
+    val deletions: Int,
+    val findingsBySeverity: List<GitSeverityCount> = emptyList(),
+    val totalFindings: Int,
+    val potentialFindings: Int,
+    val topFindings: List<GitReviewFinding> = emptyList(),
+)
+
 /** The typed event union streamed on the terminalSubscribe channel (Phase 9). */
 @Serializable
 @JsonClassDiscriminator("kind")
