@@ -174,12 +174,13 @@ data class ChatCost(
     val isEstimate: Boolean,
 )
 
-/** Start a streamed chat turn. scope (per-turn retrieval) is TS-only for the slice. */
+/** Start a streamed chat turn. scope = per-turn retrieval (T-PRD09); honoured once context injection lands. */
 @Serializable
 data class ChatSendRequest(
     val conversationId: String,
     val message: String,
     val providerId: String? = null,
+    val scope: ContextScope? = null,
 )
 
 /** Data of each done:false envelope: one streamed assistant token. */
@@ -274,6 +275,25 @@ data class TerminalErrorEvent(
     val commandId: String,
     val message: String,
 ) : TerminalEvent
+
+/** Per-turn retrieval scope the composer chips emit (T-PRD09); carried by ChatSendRequest.scope. */
+@Serializable
+@JsonClassDiscriminator("kind")
+sealed interface ContextScope
+
+@Serializable
+@SerialName("all")
+object ContextScopeAll : ContextScope
+
+@Serializable
+@SerialName("roots")
+data class ContextScopeRoots(
+    val rootIds: List<String>,
+) : ContextScope
+
+@Serializable
+@SerialName("none")
+object ContextScopeNone : ContextScope
 
 /** The tool-call lifecycle union the IDE renders as approval / diff / result cards. */
 @Serializable

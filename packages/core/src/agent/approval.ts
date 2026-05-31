@@ -1,4 +1,5 @@
 import type { ToolCallEvent, ToolReview } from '@event4u-agent/protocol';
+import type { AuditRecorder } from '../permissions/audit.js';
 import type { PermissionDecision, PermissionGate } from '../permissions/gate.js';
 import type { NormalizedToolCall } from '../tools/normalizer.js';
 
@@ -57,6 +58,8 @@ export interface ApprovalContext {
   argsPreview?: string;
   /** Optional reason surfaced on the approval card. */
   riskReason?: string;
+  /** Optional audit trail — records hard-floor blocks + user decisions (T-PRD05). */
+  audit?: AuditRecorder;
 }
 
 const PREVIEW_LIMIT = 200;
@@ -80,6 +83,7 @@ export async function* runToolCallWithApproval(
 
   const verdict = await ctx.gate.evaluate({ tool: name, args: asRecord(call.input) });
   if (verdict.result === 'block') {
+    await ctx.audit?.record({ kind: 'deny_hard_floor', tool: name, reason: verdict.matched });
     yield { kind: 'error', id, message: `blocked by hard floor: ${verdict.matched}` };
     return;
   }
@@ -109,8 +113,16 @@ export async function* runToolCallWithApproval(
     }
 
     yield { kind: 'approvalResolved', id, decision };
-    if (decision === 'deny') return;
-    if (decision === 'always') await ctx.gate.grantAlways(name);
+    if (decision === 'deny') {
+      await ctx.audit?.record({ kind: 'deny_user', tool: name });
+      return;
+    }
+    if (decision === 'always') {
+      await ctx.gate.grantAlways(name);
+      await ctx.audit?.record({ kind: 'grant_always', tool: name });
+    } else {
+      await ctx.audit?.record({ kind: 'grant_once', tool: name });
+    }
   }
 
   if (ctx.signal?.aborted) {

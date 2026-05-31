@@ -23,7 +23,7 @@
 | 5 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 35 | 5 | 0 | ██████░░░░ 56% |
 | 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 47 | 42 | 33 | 0 | ████░░░░░░ 47% |
 | 7 | [road-to-vertical-slice.md](roadmaps/road-to-vertical-slice.md) | 4 | 21 | 1 | 7 | 13 | 0 | █████████░ 88% |
-| 8 | [road-to-product-readiness.md](roadmaps/road-to-product-readiness.md) | 4 | 27 | 23 | 0 | 4 | 0 | ░░░░░░░░░░ 0% |
+| 8 | [road-to-product-readiness.md](roadmaps/road-to-product-readiness.md) | 4 | 27 | 19 | 0 | 8 | 0 | ░░░░░░░░░░ 0% |
 
 ---
 
@@ -125,7 +125,7 @@
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
 | 1 | Surface wiring: tool-approval + diff review (both IDEs) | 🟡 in progress | 2 | 0 | 3 | 0 | 0% |
-| 2 | Trust & Control UX | 🟡 in progress | 6 | 0 | 1 | 0 | 0% |
+| 2 | Trust & Control UX | 🟡 in progress | 2 | 0 | 5 | 0 | 0% |
 | 3 | Distribution & onboarding | ⬜ not started | 5 | 0 | 0 | 0 | 0% |
 | 4 | Git workflow integration | ⬜ not started | 10 | 0 | 0 | 0 | 0% |
 
