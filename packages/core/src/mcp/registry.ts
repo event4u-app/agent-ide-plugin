@@ -101,7 +101,7 @@ export class McpToolRegistry {
    * Route a `tools/call` by prefixed id to the owning server. Throws
    * {@link McpRegistryError} for an unknown id or an unparseable prefix.
    */
-  async callTool(toolId: string, args: unknown): Promise<CallToolResult> {
+  async callTool(toolId: string, args: unknown, signal?: AbortSignal): Promise<CallToolResult> {
     const sep = toolId.indexOf(MCP_TOOL_SEPARATOR);
     if (sep <= 0) {
       throw new McpRegistryError(`tool id '${toolId}' is not '<server>:<tool>'-shaped`);
@@ -115,12 +115,16 @@ export class McpToolRegistry {
     if (!entry.tools.some((t) => t.remoteName === remoteName)) {
       throw new McpRegistryError(`server '${serverId}' has no tool '${remoteName}'`);
     }
-    return entry.client.callTool(remoteName, args);
+    return entry.client.callTool(remoteName, args, signal);
   }
 
   /** Convenience: call a tool and flatten its content to a single string. */
-  async callToolText(toolId: string, args: unknown): Promise<{ text: string; isError: boolean }> {
-    const result = await this.callTool(toolId, args);
+  async callToolText(
+    toolId: string,
+    args: unknown,
+    signal?: AbortSignal,
+  ): Promise<{ text: string; isError: boolean }> {
+    const result = await this.callTool(toolId, args, signal);
     return { text: contentToText(result.content), isError: result.isError };
   }
 }

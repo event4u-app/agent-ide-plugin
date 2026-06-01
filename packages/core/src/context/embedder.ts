@@ -1,3 +1,4 @@
+import { throwIfAborted } from '../abort.js';
 import { tokenizeCode } from './tokenize.js';
 
 /**
@@ -26,8 +27,12 @@ export interface Embedder {
   readonly modelId: string;
   /** Output vector dimensionality. */
   readonly dimensions: number;
-  /** Embed a batch of texts. Returned vectors are L2-normalized (cosine = dot product). */
-  embed(texts: string[]): Promise<Float32Array[]>;
+  /**
+   * Embed a batch of texts. Returned vectors are L2-normalized (cosine = dot
+   * product). An optional `signal` lets a Stop abort the work (T-1305); on abort
+   * the Promise rejects with the signal's reason (an `AbortError`).
+   */
+  embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]>;
 }
 
 /** L2-normalize a vector in place and return it (zero vector is left as-is). */
@@ -53,7 +58,8 @@ export class FakeEmbedder implements Embedder {
     this.modelId = `fake-${dimensions}`;
   }
 
-  async embed(texts: string[]): Promise<Float32Array[]> {
+  async embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]> {
+    throwIfAborted(signal);
     return texts.map((text) => this.embedOne(text));
   }
 
@@ -119,8 +125,10 @@ export class TransformersEmbedder implements Embedder {
     this.pipe = extractor;
   }
 
-  async embed(texts: string[]): Promise<Float32Array[]> {
+  async embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]> {
+    throwIfAborted(signal);
     await this.init();
+    throwIfAborted(signal);
     const output = (await this.pipe!(texts, { pooling: 'mean', normalize: true })) as {
       tolist: () => number[][];
     };

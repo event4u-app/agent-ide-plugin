@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { throwIfAborted } from '../../abort.js';
 import {
   clampTitle,
   degradedSummary,
@@ -52,7 +53,11 @@ export class ApiSessionAdapter implements SessionAdapter {
 
   constructor(private readonly chatsDir: string | undefined) {}
 
-  async listSummaries(options?: SessionListOptions): Promise<SessionScanResult> {
+  async listSummaries(
+    options?: SessionListOptions,
+    signal?: AbortSignal,
+  ): Promise<SessionScanResult> {
+    throwIfAborted(signal);
     const diagnostics: SessionDiagnostic[] = [];
     if (!this.chatsDir) {
       diagnostics.push({
@@ -71,6 +76,7 @@ export class ApiSessionAdapter implements SessionAdapter {
 
     const summaries: SessionSummary[] = [];
     for (const file of files) {
+      throwIfAborted(signal);
       let parsed: ApiChatFile | undefined;
       try {
         parsed = JSON.parse(await readFile(file.path, 'utf8')) as ApiChatFile;
@@ -131,8 +137,9 @@ export class ApiSessionAdapter implements SessionAdapter {
     return { summaries: filtered, diagnostics };
   }
 
-  async loadMessages(ref: SessionRef): Promise<NormalizedMessage[]> {
+  async loadMessages(ref: SessionRef, signal?: AbortSignal): Promise<NormalizedMessage[]> {
     if (!ref.rawFilePath) return [];
+    throwIfAborted(signal);
     try {
       const parsed = JSON.parse(await readFile(ref.rawFilePath, 'utf8')) as ApiChatFile;
       const messages = Array.isArray(parsed.messages) ? parsed.messages : [];

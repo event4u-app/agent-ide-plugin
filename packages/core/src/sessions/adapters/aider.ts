@@ -1,4 +1,5 @@
 import { readFile, stat } from 'node:fs/promises';
+import { throwIfAborted } from '../../abort.js';
 import { clampTitle, makeSessionId, stableHash, toMillis } from '../parse-utils.js';
 import {
   DEFAULT_SESSION_LIMIT,
@@ -91,7 +92,11 @@ export class AiderAdapter implements SessionAdapter {
 
   constructor(private readonly historyFile: string | undefined) {}
 
-  async listSummaries(options?: SessionListOptions): Promise<SessionScanResult> {
+  async listSummaries(
+    options?: SessionListOptions,
+    signal?: AbortSignal,
+  ): Promise<SessionScanResult> {
+    throwIfAborted(signal);
     const diagnostics: SessionDiagnostic[] = [];
     if (!this.historyFile) {
       diagnostics.push({
@@ -139,8 +144,9 @@ export class AiderAdapter implements SessionAdapter {
     return { summaries: filtered, diagnostics };
   }
 
-  async loadMessages(ref: SessionRef): Promise<NormalizedMessage[]> {
+  async loadMessages(ref: SessionRef, signal?: AbortSignal): Promise<NormalizedMessage[]> {
     if (!ref.rawFilePath) return [];
+    throwIfAborted(signal);
     try {
       const content = await readFile(ref.rawFilePath, 'utf8');
       const block = splitBlocks(content, ref.rawFilePath).find(
