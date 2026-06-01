@@ -1,4 +1,7 @@
+import type { ContextSnippetAnnotation } from '@event4u-agent/protocol';
+
 import { throwIfAborted } from '../abort.js';
+import { type BuildContextSnippetsOptions, buildContextSnippets } from './annotations.js';
 import { CodeRetriever, type SymbolMatch } from './bm25.js';
 import type { Embedder } from './embedder.js';
 import { EmbeddingCache } from './embedding-cache.js';
@@ -10,6 +13,7 @@ import {
   symbolToChunk,
   vectorHitToChunkRef,
   type ChunkRef,
+  type FusedResult,
   type QueryExpander,
   type RankedItem,
   type Reranker,
@@ -245,6 +249,24 @@ export class ContextEngine {
     opts: RetrieveOptions = {},
     signal?: AbortSignal,
   ): Promise<ChunkRef[]> {
+    const scored = await this.hybridRetrieveScored(query, k, opts, signal);
+    return scored.map((f) => f.item);
+  }
+
+  /**
+   * As {@link hybridRetrieve}, but keeps the RRF fusion `score` on each result
+   * (additive seam, T-1308 — `hybridRetrieve` stays score-free). The score
+   * carried is the pre-rerank RRF strength matched back to the reranked item by
+   * {@link chunkRefKey}; with the default {@link IdentityReranker} the order and
+   * scores align exactly. Feed the result to {@link buildContextSnippets} (via
+   * {@link retrieveContextSnippets}) for the context-snippet annotations.
+   */
+  async hybridRetrieveScored(
+    query: string,
+    k: number,
+    opts: RetrieveOptions = {},
+    signal?: AbortSignal,
+  ): Promise<FusedResult<ChunkRef>[]> {
     if (opts.rootIds && opts.rootIds.length === 0) return [];
     if (k <= 0) return [];
     throwIfAborted(signal);
@@ -261,11 +283,43 @@ export class ContextEngine {
     }
 
     const merged = rrfFuse(perQueryFused).slice(0, depth);
+    const scoreByKey = new Map(merged.map((f) => [f.key, f.score]));
     const reranked = await this.reranker.rerank(
       query,
       merged.map((f) => f.item),
     );
-    return reranked.slice(0, k);
+    return reranked.slice(0, k).map((item) => {
+      const key = chunkRefKey(item);
+      return { key, item, score: scoreByKey.get(key) ?? 0 };
+    });
+  }
+
+  /**
+   * Expand ONE chunk ref into its ±context snippet (no cross-ref merge, so a
+   * 1:1 mapping with the scored retrieval order is preserved — the
+   * {@link buildContextSnippets} resolver). `undefined` when the file's content
+   * is no longer indexed.
+   */
+  snippetForChunk(ref: ChunkRef, contextLines = 20): Snippet | undefined {
+    const content = this.segments.get(ref.rootId)?.contentByFile.get(ref.filePath);
+    if (content === undefined) return undefined;
+    return new Snippet(ref.filePath, content, ref.startLine, ref.endLine).expand(contextLines);
+  }
+
+  /**
+   * End-to-end convenience for the context-snippet seam (T-1308): hybrid
+   * retrieve with scores, then build the wire annotations a future IDE Context
+   * Side Bar renders. The render half stays IDE-deferred.
+   */
+  async retrieveContextSnippets(
+    query: string,
+    k: number,
+    opts: RetrieveOptions = {},
+    signal?: AbortSignal,
+    buildOptions?: BuildContextSnippetsOptions,
+  ): Promise<ContextSnippetAnnotation[]> {
+    const scored = await this.hybridRetrieveScored(query, k, opts, signal);
+    return buildContextSnippets(scored, (ref) => this.snippetForChunk(ref), buildOptions);
   }
 
   /** BM25 hits for one query, mapped to their containing chunk, deduped, ordered. */
