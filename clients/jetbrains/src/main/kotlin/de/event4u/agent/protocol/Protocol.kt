@@ -247,6 +247,7 @@ data class AgentTurnRequest(
     val message: String,
     val providerId: String? = null,
     val maxIterations: Int? = null,
+    val mode: String? = null,
     val scope: ContextScope? = null,
 )
 
@@ -267,6 +268,7 @@ data class AgentTurnResponse(
     val iterations: Int,
     val cancelled: Boolean,
     val stopReason: String,
+    val mode: String,
     val budget: ChatBudgetStatus? = null,
     val annotations: List<Annotation>? = null,
 )

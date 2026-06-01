@@ -371,9 +371,11 @@ describe('method registry', () => {
       iterations: 2,
       cancelled: false,
       stopReason: 'end_turn',
+      mode: 'edit',
     });
     expect(res.changedFiles).toEqual(['a.ts', 'b.ts']);
     expect(res.iterations).toBe(2);
+    expect(res.mode).toBe('edit');
     const ev = AgentToolEventSchema.parse({
       toolEvent: { kind: 'started', id: 't1', name: 'write_files', argsPreview: '{}' },
     });
@@ -390,6 +392,7 @@ describe('method registry', () => {
       iterations: 1,
       cancelled: false,
       stopReason: 'end_turn',
+      mode: 'edit',
       annotations: [
         {
           kind: 'context-snippet',
