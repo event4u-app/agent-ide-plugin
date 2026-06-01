@@ -387,7 +387,7 @@ data class ContextScopeRoots(
 @SerialName("none")
 object ContextScopeNone : ContextScope
 
-/** Chat-turn artifacts (SweepAI Message.annotations): context-snippet + code-suggestion members. */
+/** Chat-turn artifacts (SweepAI Message.annotations): context-snippet + code-suggestion + status-row. */
 @Serializable
 @JsonClassDiscriminator("kind")
 sealed interface Annotation
@@ -412,6 +412,16 @@ data class CodeSuggestionAnnotation(
     val state: String,
     val diffPreview: String,
     val errorMessage: String? = null,
+) : Annotation
+
+@Serializable
+@SerialName("status-row")
+data class StatusRowAnnotation(
+    val statusId: String,
+    val label: String,
+    val state: String,
+    val phase: String? = null,
+    val detail: String? = null,
 ) : Annotation
 
 /** The tool-call lifecycle union the IDE renders as approval / diff / result cards. */
