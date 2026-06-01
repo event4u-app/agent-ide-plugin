@@ -6,17 +6,21 @@ import type {
   ChatSendResponse,
   ChatUsage,
   ChatMessage,
+  ContextScope,
+  ContextSnippetAnnotation,
   Envelope,
   LlmMode,
   LlmRequest,
   LlmUsage,
 } from '@event4u-agent/protocol';
+import { isAbortError } from '../abort.js';
 import type { BudgetRecorder, BudgetStatus } from '../cost/budget.js';
 import { estimateCost, type CostRange } from '../cost/estimate.js';
 import type { LlmBackend } from '../llm/backend.js';
 import { LlmStreamError } from '../llm/backend.js';
 import { CancellationToken } from '../llm/cancellation.js';
 import type { PricingBook } from '../pricing/loader.js';
+import { buildContextInjection } from './context-injection.js';
 import type { ConversationStore } from './store.js';
 import { resolveSystemPrompt, type LoadGuidelines } from './system-prompt.js';
 
@@ -88,6 +92,21 @@ export interface ChatHandlerDeps {
    * prompt (backward-compatible).
    */
   loadGuidelines?: LoadGuidelines;
+  /**
+   * Optional scoped-context retriever (T-MR13, AI council 2026-06-01,
+   * UNANIMOUS A1/B1/C1/D1/E1/F1). When set, the handler retrieves the top-k
+   * context snippets for the turn's {@link ContextScope}, folds them into the
+   * system prompt (so the model sees them — D1), and surfaces them on the
+   * response (so the IDE renders SnippetBadges — E1). Absent → no retrieval
+   * (backward-compatible; the vertical-slice path is unchanged — F1). The
+   * callback resolves the scope against the live enabled roots itself (the
+   * {@link WorkspaceCoordinator} owns that set — C1).
+   */
+  retrieveContext?: (
+    query: string,
+    scope: ContextScope,
+    signal: AbortSignal,
+  ) => Promise<ContextSnippetAnnotation[]>;
   /** Output cap for the turn. Default 2048 (matches the `LlmRequest` default). */
   maxTokens?: number;
 }
@@ -131,12 +150,18 @@ export class ChatHandler {
       }));
       const backend = this.deps.resolveBackend(req.providerId);
       const model = this.deps.resolveModel(req.providerId);
-      // Fold workspace guidelines into the system prompt BEFORE building the
-      // request, so the pre-send estimate below counts the guidelines exactly
-      // once (council trap: estimate must not undercount the system block).
-      const system = this.deps.loadGuidelines
-        ? await resolveSystemPrompt(undefined, this.deps.loadGuidelines)
-        : undefined;
+      // Retrieve scoped context, then fold both the context block and the
+      // workspace guidelines into the system prompt BEFORE building the request,
+      // so the pre-send estimate below counts the full system block exactly once
+      // (council trap: the estimate must not undercount what the model sees).
+      // The context block is the `base`; guidelines prepend ahead of it.
+      const annotations = await this.retrieveContext(req, token.signal);
+      const injection = buildContextInjection(annotations);
+      const load = this.deps.loadGuidelines;
+      const system =
+        load || injection.system
+          ? await resolveSystemPrompt(injection.system, load ?? (async () => ''))
+          : undefined;
       const request: LlmRequest = {
         model,
         messages,
@@ -213,10 +238,39 @@ export class ChatHandler {
         cancelled,
         stopReason,
         ...(budget ? { budget } : {}),
+        // EXACTLY the snippets folded into `system` (council trap: the wire
+        // annotations must reflect what the model saw, not a budget-dropped
+        // superset). Omitted when nothing was injected.
+        ...(injection.used.length ? { annotations: injection.used } : {}),
       };
       return { messageId, messageType: 'chatSend', data: response, done: true };
     } finally {
       this.active.delete(req.conversationId);
+    }
+  }
+
+  /**
+   * Retrieve the scoped context snippets for this turn. No-op (→ `[]`) unless a
+   * `retrieveContext` callback is injected and the scope is not `none`
+   * (`none` = "no code context", short-circuited before any retrieval). The
+   * omitted scope defaults to `all` (F1). Fail-open: a retrieval error degrades
+   * to no context so a flaky index never breaks the chat turn — but a
+   * user-initiated abort is RE-THROWN, never swallowed (the T-1305
+   * fail-open-must-not-eat-Stop lesson).
+   */
+  private async retrieveContext(
+    req: ChatSendRequest,
+    signal: AbortSignal,
+  ): Promise<ContextSnippetAnnotation[]> {
+    const retrieve = this.deps.retrieveContext;
+    if (!retrieve) return [];
+    const scope: ContextScope = req.scope ?? { kind: 'all' };
+    if (scope.kind === 'none') return [];
+    try {
+      return await retrieve(req.message, scope, signal);
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      return [];
     }
   }
 

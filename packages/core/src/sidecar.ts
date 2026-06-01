@@ -55,6 +55,9 @@ export interface BuildCoreOptions {
   guidelines?: GuidelinesStore;
 }
 
+/** Top-k context snippets retrieved per chat turn (T-MR13). */
+const CONTEXT_TOP_K = 8;
+
 export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher {
   const env = options.env ?? process.env;
   const cwd = options.cwd ?? process.cwd();
@@ -73,12 +76,21 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
         })
       : undefined);
 
+  // One coordinator instance drives BOTH the dispatcher's workspace lifecycle
+  // and the chat handler's scoped retrieval (T-MR13) — they MUST share state so
+  // a turn retrieves against the same live index the connect handshake built.
+  const coordinator = new WorkspaceCoordinator();
+
   const chatHandler = new ChatHandler({
     resolveBackend: (providerId) => registry.resolveBackend(providerId),
     resolveModel: (providerId) => registry.resolveModel(providerId),
     store,
     pricing: options.pricing,
     loadGuidelines,
+    // Scoped-context retrieval (T-MR13): forward the turn's scope to the shared
+    // coordinator, which resolves it against the live enabled roots.
+    retrieveContext: (query, scope, signal) =>
+      coordinator.retrieveContextSnippets(query, CONTEXT_TOP_K, scope, signal),
     ...(budget ? { budget } : {}),
   });
 
@@ -108,5 +120,5 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     ...(budget ? { budget } : {}),
   });
 
-  return new Dispatcher(new WorkspaceCoordinator(), chatHandler, gitHandler, agentTurnHandler);
+  return new Dispatcher(coordinator, chatHandler, gitHandler, agentTurnHandler);
 }

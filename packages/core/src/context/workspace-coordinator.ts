@@ -1,11 +1,17 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { RootIndexStatus, WorkspaceFolder } from '@event4u-agent/protocol';
+import type {
+  ContextScope,
+  ContextSnippetAnnotation,
+  RootIndexStatus,
+  WorkspaceFolder,
+} from '@event4u-agent/protocol';
 import { ContextEngine } from './engine.js';
 import { CodeIndexer } from './indexer.js';
 import { LanguageRegistry } from './languages.js';
 import { MultiRootWalker, type WalkedFile } from './multi-root-walker.js';
 import { RootRegistry, uriToPath, type Platform } from './roots.js';
+import { resolveContextScope } from './scope.js';
 
 /**
  * T-MR11 — Core reconciliation + lifecycle.
@@ -29,6 +35,18 @@ export interface IndexTarget {
   indexFile(filePath: string, content: string, rootId: string): Promise<void>;
   removeRoot(rootId: string): void;
   symbolCountForRoot(rootId: string): number;
+  /**
+   * T-MR13 — hybrid-retrieve the top-k context snippets for `query`, scoped to
+   * `opts.rootIds` (`undefined` = every indexed segment, `[]` = no retrieval).
+   * The real {@link ContextEngine} implements this; the coordinator resolves
+   * the per-turn {@link ContextScope} to `rootIds` BEFORE calling it.
+   */
+  retrieveContextSnippets(
+    query: string,
+    k: number,
+    opts: { rootIds?: string[] },
+    signal?: AbortSignal,
+  ): Promise<ContextSnippetAnnotation[]>;
 }
 
 /** The slice of {@link MultiRootWalker} the coordinator drives (injectable for tests). */
@@ -113,6 +131,37 @@ export class WorkspaceCoordinator {
       displayName: r.displayName,
       kind: r.kind,
     }));
+  }
+
+  /**
+   * T-MR13 — retrieve the top-k context snippets for one chat turn, honouring
+   * the per-turn {@link ContextScope}. The scope is resolved against the live
+   * enabled roots HERE (the coordinator is the only holder of that set):
+   *  - `all`   → every indexed segment;
+   *  - `none`  → no retrieval at all;
+   *  - `roots` → the explicit set filtered to currently-enabled roots (a stale
+   *    id is dropped; if nothing survives, the turn carries no code context
+   *    rather than silently widening to `all` — the {@link resolveContextScope}
+   *    contract).
+   *
+   * The chat handler stays scope-agnostic and just forwards `req.scope`. The
+   * `signal` is threaded into retrieval so a mid-turn cancel stops the search.
+   */
+  async retrieveContextSnippets(
+    query: string,
+    k: number,
+    scope: ContextScope,
+    signal?: AbortSignal,
+  ): Promise<ContextSnippetAnnotation[]> {
+    const rootIds = resolveContextScope(scope, this.enabledRootIds());
+    // `none` (and a roots-set that filtered to empty) → `[]` → the engine
+    // short-circuits to no retrieval; `all` → `undefined` → every segment.
+    return this.engine.retrieveContextSnippets(query, k, { rootIds }, signal);
+  }
+
+  /** Stable ids of the currently-registered, walkable (enabled) roots. */
+  private enabledRootIds(): string[] {
+    return this.registry.walkable().map((r) => r.stableId);
   }
 
   /**

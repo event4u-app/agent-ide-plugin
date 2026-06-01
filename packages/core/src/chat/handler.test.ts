@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type {
   ChatSendResponse,
+  ContextScope,
+  ContextSnippetAnnotation,
   Envelope,
   LlmRequest,
   LlmStreamEvent,
@@ -218,5 +220,132 @@ describe('Dispatcher — chatSend without a handler', () => {
     const res = await dispatcher.dispatch(sendEnv('c1', 'hi'));
     expect(res.messageType).toBe('error');
     expect(res.data).toMatchObject({ code: 'chat_not_configured' });
+  });
+});
+
+describe('ChatHandler — scoped context retrieval (T-MR13)', () => {
+  /** A backend that records the request it was given, so we can inspect `system`. */
+  function capturingBackend(): { backend: LlmBackend; lastRequest: () => LlmRequest | undefined } {
+    let last: LlmRequest | undefined;
+    const backend: LlmBackend = {
+      id: 'capture',
+      mode: 'api',
+      async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
+        last = request;
+        yield { kind: 'text_delta', text: 'ok' };
+        yield { kind: 'stop', reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } };
+      },
+    };
+    return { backend, lastRequest: () => last };
+  }
+
+  const snippet = (filePath: string): ContextSnippetAnnotation => ({
+    kind: 'context-snippet',
+    rootId: 'A',
+    filePath,
+    startLine: 1,
+    endLine: 3,
+    relevance: 1,
+    category: 'source',
+    preview: `// ${filePath}\nconst x = 1;`,
+  });
+
+  function handlerWith(
+    backend: LlmBackend,
+    retrieveContext: (
+      query: string,
+      scope: ContextScope,
+      signal: AbortSignal,
+    ) => Promise<ContextSnippetAnnotation[]>,
+  ): ChatHandler {
+    return new ChatHandler({
+      resolveBackend: () => backend,
+      resolveModel: () => 'test-model',
+      store: new InMemoryConversationStore({ idFactory: () => 'id-1' }),
+      retrieveContext,
+    });
+  }
+
+  it('folds retrieved snippets into the system prompt AND surfaces them on the response', async () => {
+    const { backend, lastRequest } = capturingBackend();
+    const calls: { query: string; scope: ContextScope }[] = [];
+    const handler = handlerWith(backend, async (query, scope) => {
+      calls.push({ query, scope });
+      return [snippet('src/a.ts'), snippet('src/b.ts')];
+    });
+
+    const res = await handler.handleSend(
+      'm1',
+      { conversationId: 'c1', message: 'how does auth work?' },
+      () => {},
+    );
+
+    // Retriever saw the user message and the default `all` scope.
+    expect(calls).toEqual([{ query: 'how does auth work?', scope: { kind: 'all' } }]);
+    // The model saw the context block.
+    expect(lastRequest()?.system).toContain('<workspace-context>');
+    expect(lastRequest()?.system).toContain('// src/a.ts:1-3');
+    // The response carries exactly the injected snippets.
+    const data = res.data as ChatSendResponse;
+    expect(data.annotations?.map((a) => a.filePath)).toEqual(['src/a.ts', 'src/b.ts']);
+  });
+
+  it('short-circuits scope `none` — no retrieval, no annotations, no system prompt', async () => {
+    const { backend, lastRequest } = capturingBackend();
+    let called = false;
+    const handler = handlerWith(backend, async () => {
+      called = true;
+      return [snippet('x.ts')];
+    });
+
+    const res = await handler.handleSend(
+      'm1',
+      { conversationId: 'c1', message: 'hi', scope: { kind: 'none' } },
+      () => {},
+    );
+
+    expect(called).toBe(false);
+    expect(lastRequest()?.system).toBeUndefined();
+    expect((res.data as ChatSendResponse).annotations).toBeUndefined();
+  });
+
+  it('is a no-op when no retriever is wired (vertical-slice path unchanged)', async () => {
+    const { backend, lastRequest } = capturingBackend();
+    const handler = new ChatHandler({
+      resolveBackend: () => backend,
+      resolveModel: () => 'test-model',
+      store: new InMemoryConversationStore({ idFactory: () => 'id-1' }),
+    });
+
+    const res = await handler.handleSend('m1', { conversationId: 'c1', message: 'hi' }, () => {});
+
+    expect(lastRequest()?.system).toBeUndefined();
+    expect((res.data as ChatSendResponse).annotations).toBeUndefined();
+  });
+
+  it('fail-open: a retrieval error degrades to no context, the turn still completes', async () => {
+    const { backend, lastRequest } = capturingBackend();
+    const handler = handlerWith(backend, async () => {
+      throw new Error('index exploded');
+    });
+
+    const res = await handler.handleSend('m1', { conversationId: 'c1', message: 'hi' }, () => {});
+
+    expect(lastRequest()?.system).toBeUndefined();
+    expect((res.data as ChatSendResponse).text).toBe('ok');
+    expect((res.data as ChatSendResponse).annotations).toBeUndefined();
+  });
+
+  it('re-throws an abort from retrieval (Stop must not be swallowed)', async () => {
+    const { backend } = capturingBackend();
+    const handler = handlerWith(backend, async () => {
+      throw new DOMException('aborted', 'AbortError');
+    });
+
+    await expect(
+      handler.handleSend('m1', { conversationId: 'c1', message: 'hi' }, () => {}),
+    ).rejects.toThrow('aborted');
+    // The in-flight slot is released even when retrieval throws.
+    expect(handler.isActive('c1')).toBe(false);
   });
 });

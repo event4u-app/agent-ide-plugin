@@ -474,8 +474,10 @@ export const ChatSendRequestSchema = z.object({
   /** Provider/backend selector; omitted = the Core's default. */
   providerId: z.string().min(1).optional(),
   /**
-   * Per-turn retrieval scope; omitted = default (`all`). Honoured once context
-   * retrieval is wired into the turn; ignored by the vertical slice.
+   * Per-turn retrieval scope; omitted = default (`all`). Honoured by the chat
+   * turn (T-MR13): the resolved scope drives which indexed roots the Context
+   * Engine retrieves from, and the retrieved snippets are folded into the
+   * turn's system prompt + surfaced on {@link ChatSendResponseSchema}.
    */
   scope: ContextScopeSchema.optional(),
 });
@@ -550,6 +552,15 @@ export const ChatSendResponseSchema = z.object({
    * configured. Absent when none is wired (backward-compatible additive field).
    */
   budget: ChatBudgetStatusSchema.optional(),
+  /**
+   * Context-snippet annotations for the snippets the Context Engine retrieved
+   * for this turn and folded into the model's system prompt (T-MR13). These are
+   * EXACTLY the snippets the model saw — the IDE renders them as SnippetBadges.
+   * Absent / empty when no retriever is wired, the scope is `none`, or the
+   * index yielded nothing. Turn-local: not persisted onto the stored message
+   * this slice (additive optional field).
+   */
+  annotations: z.array(ContextSnippetAnnotationSchema).optional(),
 });
 export type ChatSendResponse = z.infer<typeof ChatSendResponseSchema>;
 
