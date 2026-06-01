@@ -164,7 +164,7 @@ complexity: heavy
 > **Dependencies.** Sprint 9 (intention actions may trigger shell commands — needs PTY).
 
 - [ ] **T-1001 — Inline-edit Prompt Bar (`Cmd+I`).** Select code → press `Cmd+I` → small floating prompt bar appears anchored to the selection. User types a transform request ("rename this to `userName`", "add error handling"), Enter sends. Result shown as inline-diff with accept/reject.
-- [ ] **T-1002 — Diff-accept shortcuts.** Per PLAN.md §3.5.4 SweepAI shortcuts: `Cmd+Y` accept single, `Cmd+N` reject single, `Cmd+Enter` accept-all-in-file, `Cmd+Shift+Backspace` reject-all. Implement for both IDEs. Resolve Sweep's `Cmd+N` conflict (Sweep uses `Cmd+N` for both "new chat" and "reject" — we use `Cmd+J` for new chat, `Cmd+N` for reject).
+- [ ] **T-1002 — Diff-accept shortcuts.** <!-- data layer landed 2026-06-01 (ADR-020): the per-suggestion state machine these shortcuts drive is core — Message.annotations `code-suggestion` member + packages/core/src/agent/suggestions.ts (transitionCodeSuggestion reducer pending|processing|done|error, buildCodeSuggestions over WriteFilesPlan). The shortcuts + diff-gutter render stay IDE; route accept→start/complete, reject→fail through the reducer. --> Per PLAN.md §3.5.4 SweepAI shortcuts: `Cmd+Y` accept single, `Cmd+N` reject single, `Cmd+Enter` accept-all-in-file, `Cmd+Shift+Backspace` reject-all. Implement for both IDEs. Resolve Sweep's `Cmd+N` conflict (Sweep uses `Cmd+N` for both "new chat" and "reject" — we use `Cmd+J` for new chat, `Cmd+N` for reject).
 - [ ] **T-1003 — Right-Click EditorPopupMenu group.** JetBrains: `<group id="event4u.editor"/>` in `plugin.xml` with actions "Ask about this", "Fix this", "Explain this", "Refactor this". VS Code: contributes to `editor/context` menu in `package.json`.
 - [ ] **T-1004 — Intention Action.** JetBrains: `IntentionAction` registered, `Alt+Enter` shows "Fix with event4u-agent" alongside built-in intentions. Action fires the inline-edit prompt bar (T-1001) pre-populated with the relevant code.
 - [ ] **T-1005 — Find Action integration.** JetBrains: register all plugin actions in `Find Action` (`Cmd+Shift+A`). User types "ask about" → shows our action. VS Code: commands already register in Command Palette via `contributes.commands`; nothing extra needed.
@@ -261,6 +261,22 @@ complexity: heavy
 > T-1301/1302/1303/1307 stay `[~]` — the sidebar list, fork affordance, rewind
 > button, guidelines editor, and the auto-checkpoint AgentDriver wiring are IDE
 > surfaces. T-1304/1305/1306/1308 + the exit gate stay `[ ]` (IDE-runtime).
+>
+> **Annotations contract — second member landed (2026-06-01).** Following the
+> `context-snippet` member (T-1308 / ADR-019), the `Message.annotations` union
+> gained its **`code-suggestion`** member: the SweepAI `CodeMirrorSuggestionEditor`
+> per-edit state machine (`pending|processing|done|error`). Pure-core only —
+> `packages/protocol/src/schema.ts` (`CodeSuggestionAnnotation` + flat-enum
+> `CodeSuggestionState`, codegen'd to a Kotlin sealed-union variant) +
+> `packages/core/src/agent/suggestions.ts` (`buildCodeSuggestions` over the
+> existing `WriteFilesPlan` edit seam; pure `transitionCodeSuggestion` reducer
+> owning the state invariant; no-op on invalid/terminal edges). 12 new core tests,
+> core 859 pass/1 skip, `task ci` + `jetbrains:check` green. ADR-020. AI council
+> (codex-cli + gemini-cli) UNANIMOUS A1/C1/D1/E1/F1/G1, split B→B1 (flat enum over
+> a nested sub-union). This pre-builds the data layer for **Phase 10 inline-edit
+> diff-accept (T-1001/T-1002)** — the editor render + per-suggestion stage/apply
+> affordance stay IDE-deferred, so no checkbox flips. The third forward-pointed
+> member (`status-row` progress strings) is deferred to its own slice.
 
 ---
 

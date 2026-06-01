@@ -441,7 +441,7 @@ const sealedUnions: SealedUnion[] = [
   },
   {
     name: 'Annotation',
-    doc: 'Chat-turn artifacts (SweepAI Message.annotations); T-1308 ships only the context-snippet member.',
+    doc: 'Chat-turn artifacts (SweepAI Message.annotations): context-snippet + code-suggestion members.',
     variants: [
       {
         kind: 'context-snippet',
@@ -454,6 +454,17 @@ const sealedUnions: SealedUnion[] = [
           { name: 'relevance', kotlinType: 'Double' },
           { name: 'category', kotlinType: 'String' },
           { name: 'preview', kotlinType: 'String' },
+        ],
+      },
+      {
+        kind: 'code-suggestion',
+        className: 'CodeSuggestionAnnotation',
+        fields: [
+          { name: 'suggestionId', kotlinType: 'String' },
+          { name: 'filePath', kotlinType: 'String' },
+          { name: 'state', kotlinType: 'String' },
+          { name: 'diffPreview', kotlinType: 'String' },
+          { name: 'errorMessage', kotlinType: 'String?', default: 'null' },
         ],
       },
     ],

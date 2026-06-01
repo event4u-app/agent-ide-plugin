@@ -158,7 +158,7 @@ export const ContextScopeSchema = z.discriminatedUnion('kind', [
 ]);
 export type ContextScope = z.infer<typeof ContextScopeSchema>;
 
-// --- message annotations (T-1308 — context-snippet seam) ----------------
+// --- message annotations (T-1308 context-snippet + code-suggestion seams) -
 
 /**
  * Message annotations (SweepAI-derived `Message.annotations` contract;
@@ -166,13 +166,15 @@ export type ContextScope = z.infer<typeof ContextScopeSchema>;
  * authority). An annotation is an artifact that rides on the turn that
  * produced it — NOT a separate UI channel. Modelled as a `kind`-tagged
  * discriminated union so the wire surface and the Kotlin sealed hierarchy
- * stay extensible (code-suggestion / status rows land later) without a
- * breaking reshuffle.
+ * stay extensible (status rows land later) without a breaking reshuffle.
  *
- * This slice ships ONLY the `context-snippet` member: the data a future
- * IDE "Context Side Bar / SnippetBadge" renders (T-1308). The render itself
- * (badge opacity, colour, hover-preview, search-add, click-to-open) stays
- * IDE-deferred.
+ * Members shipped so far:
+ *   - `context-snippet` (T-1308): data a future "Context Side Bar / SnippetBadge"
+ *     renders — badge opacity, colour, hover-preview, search-add, click-to-open
+ *     stay IDE-deferred.
+ *   - `code-suggestion`: SweepAI `CodeMirrorSuggestionEditor` per-edit state
+ *     machine (pending|processing|done|error). The editor render + per-suggestion
+ *     stage/apply affordance stay IDE-deferred.
  */
 
 /**
@@ -204,7 +206,45 @@ export const ContextSnippetAnnotationSchema = z.object({
 });
 export type ContextSnippetAnnotation = z.infer<typeof ContextSnippetAnnotationSchema>;
 
-export const AnnotationSchema = z.discriminatedUnion('kind', [ContextSnippetAnnotationSchema]);
+/**
+ * Lifecycle of one proposed code edit (SweepAI `CodeMirrorSuggestionEditor`
+ * state machine, ported to the durable message model). `pending` = located,
+ * not yet applied; `processing` = apply in flight; `done` = applied; `error` =
+ * could not locate or apply. Core owns every transition (see
+ * `transitionCodeSuggestion` in `@event4u-agent/core`); the wire carries only
+ * the current value as a flat enum so VS Code and JetBrains stay thin renderers
+ * (AI council 2026-06-01, B1 over a nested sub-union — the codegen emits flat
+ * `kind`-discriminated variants only, and the reducer is the single writer of
+ * the invariant).
+ */
+export const CodeSuggestionStateSchema = z.enum(['pending', 'processing', 'done', 'error']);
+export type CodeSuggestionState = z.infer<typeof CodeSuggestionStateSchema>;
+
+/**
+ * One proposed code edit riding on the assistant turn that produced it. Durable
+ * (re-rendered deterministically from the message), distinct from the transient
+ * {@link ToolCallEventSchema} lifecycle stream (AI council A1: complementary, no
+ * shared types). `diffPreview` is a bounded unified-diff slice (mirrors the
+ * `context-snippet` bounded-preview discipline) so an old message renders without
+ * an RPC round-trip; `errorMessage` is set only in the `error` state.
+ */
+export const CodeSuggestionAnnotationSchema = z.object({
+  kind: z.literal('code-suggestion'),
+  /** Stable per-turn id the IDE keys its stage/apply affordance off. */
+  suggestionId: z.string().min(1),
+  filePath: z.string(),
+  state: CodeSuggestionStateSchema,
+  /** Bounded unified-diff slice; empty when the edit never resolved to a diff. */
+  diffPreview: z.string(),
+  /** Populated only in the `error` state — why the edit could not be located/applied. */
+  errorMessage: z.string().optional(),
+});
+export type CodeSuggestionAnnotation = z.infer<typeof CodeSuggestionAnnotationSchema>;
+
+export const AnnotationSchema = z.discriminatedUnion('kind', [
+  ContextSnippetAnnotationSchema,
+  CodeSuggestionAnnotationSchema,
+]);
 export type Annotation = z.infer<typeof AnnotationSchema>;
 
 // --- live terminal (Phase 9, T-903) -------------------------------------
