@@ -115,4 +115,26 @@ complexity: standard
 - [~] Open chat → send a prompt → the sidecar streams the answer token-by-token → Stop aborts mid-stream → the turn's cost is shown — working in **both** VS Code and JetBrains. <!-- Core path proven end-to-end in unit tests; both IDE surfaces are IDE-runtime-gated (Phases 2/3). -->
 - [x] The streamed turn is persisted via the existing `chat/` store (survives reopen). <!-- ChatHandler persists user + assistant (incl. partial-on-cancel) turns; asserted in handler.test.ts. -->
 - [~] Manual smoke runs for both IDEs captured in `docs/MANUAL_VERIFICATION.md`. <!-- Checklists authored (§ Vertical slice → Phase 2/3/4); human IDE session signs the verification log. -->
-- [ ] `road-to-product-readiness.md` is the next active roadmap.
+- [x] `road-to-product-readiness.md` is the next active roadmap. <!-- DONE 2026-06-01: road-to-product-readiness is the active successor roadmap (open, in progress) and is advanced in this same PR via the `onboardingDetect` seam (T-PRD12, ADR-033). The vertical-slice spine is proven end-to-end in unit tests; the breadth work now lives in product-readiness. -->
+
+---
+
+## Archived with deferred IDE verification (2026-06-01)
+
+This roadmap reached `count_open == 0` and is archived. Its `[~]` items are
+**not** lost — they are IDE-runtime smokes (VS Code Extension-Development-Host
+and JetBrains sandbox) whose engine + client logic shipped and is unit/CI-tested
+(ADR-010, ADR-012). They are tracked for a human IDE session in:
+
+- `docs/MANUAL_VERIFICATION.md` § Vertical slice → Phase 2 / Phase 3 / Phase 4 — the smoke checklists.
+- `road-to-product-readiness.md` — the active roadmap that owns the breadth + the same two IDE surfaces (cards, cost footer, mode/scope, packaging).
+
+Per the AI-council Iron-Law-3 resolution (2026-06-01, codex + gemini UNANIMOUS):
+keep these in the archive with the handoff recorded here rather than holding the
+roadmap open waiting on a GUI session that the autonomous environment cannot run.
+Deferred `[~]` items, by phase:
+
+- **Phase 2 (VS Code):** T-VS05/06/07/08 + exit gate — host wiring done, webview DOM render needs an EDH smoke.
+- **Phase 3 (JetBrains):** T-VS09/10/11 + exit gate — controller + stream/stop done, Swing render + `Locale.US` cost formatting need a `runIde` smoke.
+- **Phase 4 (cost):** T-VS12 + exit gate — shared cost contract pinned by a protocol test; both clients render it identically once Phases 2/3 land.
+- **Acceptance:** the full both-IDE smoke + the captured `docs/MANUAL_VERIFICATION.md` sign-off.

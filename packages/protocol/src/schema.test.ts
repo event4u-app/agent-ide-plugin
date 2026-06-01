@@ -19,6 +19,7 @@ import {
   EnvelopeSchema,
   MethodNameSchema,
   Methods,
+  OnboardingDetectResponseSchema,
   PingResponseSchema,
   RootIndexStatusSchema,
   StatusRowAnnotationSchema,
@@ -335,6 +336,7 @@ describe('method registry', () => {
       'gitCommitMessage',
       'gitPrDescription',
       'gitReviewSummary',
+      'onboardingDetect',
       'ping',
       'rootStatus',
       'terminalInput',
@@ -353,6 +355,29 @@ describe('method registry', () => {
   it('registers agentTurn but not a bare toolCall method', () => {
     expect(Object.keys(Methods)).toContain('agentTurn');
     expect(Object.keys(Methods)).not.toContain('toolCall');
+  });
+
+  it('onboardingDetect response round-trips the readiness shape (booleans only, no key value)', () => {
+    const res = OnboardingDetectResponseSchema.parse({
+      node: { version: '20.11.1', major: 20, ok: true },
+      anthropicKey: true,
+      claudeCli: false,
+      recommendedMode: 'api',
+      ready: true,
+      blockers: [],
+    });
+    expect(res.node.ok).toBe(true);
+    expect(res.recommendedMode).toBe('api');
+    expect(Object.keys(res).sort()).toEqual([
+      'anthropicKey',
+      'blockers',
+      'claudeCli',
+      'node',
+      'ready',
+      'recommendedMode',
+    ]);
+    // The wire shape carries no field that could leak the key value.
+    expect(Object.keys(res)).not.toContain('apiKey');
   });
 
   it('agentTurn request/response round-trip the wire shapes', () => {

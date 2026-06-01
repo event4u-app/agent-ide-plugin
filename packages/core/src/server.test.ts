@@ -170,3 +170,73 @@ index 1..2 100644
     expect(res.data).toMatchObject({ code: 'git_not_configured' });
   });
 });
+
+describe('Dispatcher — onboardingDetect (T-PRD12 first-run readiness)', () => {
+  type Probes = {
+    nodeVersion: () => string | null;
+    env: (name: string) => string | undefined;
+    commandExists: (command: string) => boolean;
+  };
+  const dispatcherWith = (probes: Probes): Dispatcher =>
+    new Dispatcher(new WorkspaceCoordinator(), undefined, undefined, undefined, undefined, probes);
+  const detect = async (probes: Probes) =>
+    (await dispatcherWith(probes).dispatch(request('onboardingDetect', {}, 'o1'))).data as {
+      node: { version: string | null; major: number | null; ok: boolean };
+      anthropicKey: boolean;
+      claudeCli: boolean;
+      recommendedMode: string;
+      ready: boolean;
+      blockers: string[];
+    };
+
+  it('reports ready=api when Node is new enough and a key is present', async () => {
+    const data = await detect({
+      nodeVersion: () => '20.11.1',
+      env: (name) => (name === 'ANTHROPIC_API_KEY' ? 'sk-secret-value' : undefined),
+      commandExists: () => false,
+    });
+    expect(data).toMatchObject({
+      anthropicKey: true,
+      recommendedMode: 'api',
+      ready: true,
+      blockers: [],
+    });
+    expect(data.node.ok).toBe(true);
+  });
+
+  it('falls back to keyless CLI mode when only the claude CLI is present', async () => {
+    const data = await detect({
+      nodeVersion: () => 'v22.0.0',
+      env: () => undefined,
+      commandExists: (command) => command === 'claude',
+    });
+    expect(data).toMatchObject({
+      anthropicKey: false,
+      claudeCli: true,
+      recommendedMode: 'cli',
+      ready: true,
+    });
+  });
+
+  it('is not ready and lists blockers when Node is too old and no provider exists', async () => {
+    const data = await detect({
+      nodeVersion: () => '18.19.0',
+      env: () => undefined,
+      commandExists: () => false,
+    });
+    expect(data.ready).toBe(false);
+    expect(data.recommendedMode).toBe('none');
+    expect(data.blockers.length).toBe(2);
+    expect(data.node).toMatchObject({ major: 18, ok: false });
+  });
+
+  it('never serializes the raw key value — only the anthropicKey boolean', async () => {
+    const data = await detect({
+      nodeVersion: () => '20.0.0',
+      env: (name) => (name === 'ANTHROPIC_API_KEY' ? 'sk-DO-NOT-LEAK' : undefined),
+      commandExists: () => false,
+    });
+    expect(JSON.stringify(data)).not.toContain('sk-DO-NOT-LEAK');
+    expect(data.anthropicKey).toBe(true);
+  });
+});
