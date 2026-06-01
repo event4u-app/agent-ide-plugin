@@ -24,6 +24,8 @@
  * (`commit-policy`). The card render stays IDE-runtime.
  */
 
+import { readFile } from 'node:fs/promises';
+import { isAbsolute, relative, resolve } from 'node:path';
 import type {
   ChatMessage,
   GitCommitMessageRequest,
@@ -31,17 +33,22 @@ import type {
   GitDiffSource,
   GitPrDescriptionRequest,
   GitPrDescriptionResponse,
+  GitReviewApplyFixRequest,
+  GitReviewApplyFixResponse,
   GitReviewFinding,
   GitReviewSummaryRequest,
   GitReviewSummaryResponse,
   GitSeverityCount,
   LlmRequest,
+  ToolReview,
 } from '@event4u-agent/protocol';
 import type { LlmBackend } from '../llm/backend.js';
 import { collectStream } from '../llm/backend.js';
 import { defaultGitRunner, type GitRunner } from '../commands/commit.js';
+import { buildFixEdit } from '../review/apply-fix.js';
 import { getDiff, type DiffSource } from '../review/diff-source.js';
 import { runReview } from '../review/run.js';
+import { unifiedDiff } from '../tools/write-file.js';
 import type { Severity } from '../review/types.js';
 import { SEVERITY_RANK } from '../review/types.js';
 import {
@@ -207,6 +214,11 @@ export class GitHandler {
       severity: f.severity,
       category: f.category,
       description: f.description,
+      // quotedSpan + proposedFix are FUNCTIONAL apply-fix inputs (T-CR-404),
+      // not the votes/confidence trust signals E1 keeps off the wire.
+      quotedSpan: f.quotedSpan,
+      proposedFix: f.proposedFix,
+      fixable: Boolean(f.proposedFix && f.quotedSpan),
     }));
 
     return {
@@ -218,6 +230,53 @@ export class GitHandler {
       potentialFindings: summary.potentialFindings,
       topFindings,
     };
+  }
+
+  /**
+   * Turn one review finding's proposed fix into a permission-gated edit
+   * (T-CR-404). Stateless (fork A1): the client echoes the `file` + `quotedSpan`
+   * + `proposedFix` it received on a `gitReviewSummary` finding. The Core NEVER
+   * writes — it re-reads the CURRENT file (span-drift safe), runs the shipped
+   * `buildFixEdit`, and returns the approval `review` diff (same DTO other write
+   * proposals carry, so the IDE renders it identically). A no-op / drifted span
+   * / missing file yields `applicable:false` + a `reason` (not an error) so the
+   * client greys out the affordance. The write itself rides the user-approved
+   * `write_file` path — the diff-approval + audit-log contract is unchanged.
+   */
+  async reviewApplyFix(req: GitReviewApplyFixRequest): Promise<GitReviewApplyFixResponse> {
+    const cwd = req.cwd || this.deps.defaultCwd;
+    const abs = resolve(cwd, req.file);
+    const rel = relative(cwd, abs);
+    // Reject a path that escapes the workspace root (`..` on POSIX, a different
+    // drive on Windows yields an absolute `relative()` result).
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+      return { applicable: false, reason: 'path_escapes_workspace' };
+    }
+
+    const content = await readFile(abs, 'utf8').catch(() => undefined);
+    if (content === undefined) return { applicable: false, reason: 'file_not_found' };
+
+    const edit = buildFixEdit(
+      { file: req.file, quotedSpan: req.quotedSpan, proposedFix: req.proposedFix },
+      content,
+    );
+    if (!edit) {
+      // Distinguish the two non-applicable causes for the UI affordance.
+      const reason = content.includes(req.quotedSpan) ? 'no_op' : 'span_drift';
+      return { applicable: false, reason };
+    }
+
+    const review: ToolReview = {
+      kind: 'diff',
+      files: [
+        {
+          path: rel.split(/[\\/]/).join('/'),
+          diff: unifiedDiff(content, edit.content, req.file),
+          isNewFile: false,
+        },
+      ],
+    };
+    return { applicable: true, review };
   }
 
   /** Run one non-streaming LLM turn and return the aggregated text. */

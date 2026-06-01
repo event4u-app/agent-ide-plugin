@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { LlmRequest, LlmStreamEvent } from '@event4u-agent/protocol';
 import type { LlmBackend } from '../llm/backend.js';
@@ -158,5 +161,95 @@ describe('GitHandler.reviewSummary', () => {
       'info',
     ]);
     expect(res.findingsBySeverity.every((s) => s.count === 0)).toBe(true);
+  });
+});
+
+describe('GitHandler.reviewApplyFix (T-CR-404)', () => {
+  const FILE = 'src/foo.ts';
+  const ORIGINAL = 'const a = 1;\nconst b = 2;\nexport { a };\n';
+
+  it('builds an approval diff when the span matches the current file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'apply-fix-'));
+    await mkdir(join(dir, 'src'), { recursive: true });
+    await writeFile(join(dir, FILE), ORIGINAL, 'utf8');
+
+    const handler = makeHandler(scriptedBackend(''));
+    const res = await handler.reviewApplyFix({
+      cwd: dir,
+      file: FILE,
+      quotedSpan: 'const b = 2;',
+      proposedFix: 'const b = 99;',
+    });
+
+    expect(res.applicable).toBe(true);
+    expect(res.review?.kind).toBe('diff');
+    expect(res.review?.files).toHaveLength(1);
+    expect(res.review?.files[0]?.path).toBe(FILE);
+    expect(res.review?.files[0]?.isNewFile).toBe(false);
+    expect(res.review?.files[0]?.diff).toContain('const b = 99;');
+    expect(res.review?.files[0]?.diff).toContain('-const b = 2;');
+  });
+
+  it('reports span_drift when the quoted span no longer matches the file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'apply-fix-'));
+    await mkdir(join(dir, 'src'), { recursive: true });
+    await writeFile(join(dir, FILE), ORIGINAL, 'utf8');
+
+    const handler = makeHandler(scriptedBackend(''));
+    const res = await handler.reviewApplyFix({
+      cwd: dir,
+      file: FILE,
+      quotedSpan: 'const b = 7;', // edited away since the review
+      proposedFix: 'const b = 99;',
+    });
+
+    expect(res.applicable).toBe(false);
+    expect(res.reason).toBe('span_drift');
+    expect(res.review).toBeUndefined();
+  });
+
+  it('reports no_op when the proposed fix equals the current span', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'apply-fix-'));
+    await mkdir(join(dir, 'src'), { recursive: true });
+    await writeFile(join(dir, FILE), ORIGINAL, 'utf8');
+
+    const handler = makeHandler(scriptedBackend(''));
+    const res = await handler.reviewApplyFix({
+      cwd: dir,
+      file: FILE,
+      quotedSpan: 'const b = 2;',
+      proposedFix: 'const b = 2;',
+    });
+
+    expect(res.applicable).toBe(false);
+    expect(res.reason).toBe('no_op');
+  });
+
+  it('reports file_not_found when the target file does not exist', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'apply-fix-'));
+    const handler = makeHandler(scriptedBackend(''));
+    const res = await handler.reviewApplyFix({
+      cwd: dir,
+      file: 'src/missing.ts',
+      quotedSpan: 'const b = 2;',
+      proposedFix: 'const b = 99;',
+    });
+
+    expect(res.applicable).toBe(false);
+    expect(res.reason).toBe('file_not_found');
+  });
+
+  it('refuses a path that escapes the workspace root', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'apply-fix-'));
+    const handler = makeHandler(scriptedBackend(''));
+    const res = await handler.reviewApplyFix({
+      cwd: dir,
+      file: '../escape.ts',
+      quotedSpan: 'secret',
+      proposedFix: 'leak',
+    });
+
+    expect(res.applicable).toBe(false);
+    expect(res.reason).toBe('path_escapes_workspace');
   });
 });

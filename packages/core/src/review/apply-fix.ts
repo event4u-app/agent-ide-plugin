@@ -16,11 +16,14 @@
 import type { WriteFileArgs } from '../tools/write-file.js';
 import type { ReviewIssue } from './types.js';
 
+/** The finding fields apply-fix reads — the whole `ReviewIssue` is not needed. */
+export type FixableFinding = Pick<ReviewIssue, 'file' | 'quotedSpan' | 'proposedFix'>;
+
 /**
  * Build the write args for a finding's proposed fix, or `null` when there is
  * no fix or the span no longer matches the file.
  */
-export function buildFixEdit(issue: ReviewIssue, fileContent: string): WriteFileArgs | null {
+export function buildFixEdit(issue: FixableFinding, fileContent: string): WriteFileArgs | null {
   if (!issue.proposedFix || !issue.quotedSpan) return null;
   const idx = fileContent.indexOf(issue.quotedSpan);
   if (idx === -1) return null; // span drifted — refuse to guess
