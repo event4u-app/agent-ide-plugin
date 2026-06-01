@@ -15,7 +15,7 @@ object SimpleMarkdownRenderer {
     fun toHtml(markdown: String): String {
         val sanitized = escapeHtml(markdown)
         val lines = sanitized.lines()
-        val out = StringBuilder("<html><body style='font-family:sans-serif'>")
+        val out = StringBuilder(HEAD)
         var i = 0
         var inList = false
 
@@ -44,9 +44,9 @@ object SimpleMarkdownRenderer {
                 out.append("</ul>")
                 inList = false
             }
-            if (line.isBlank()) {
-                out.append("<br>")
-            } else {
+            if (!line.isBlank()) {
+                // Blank lines need no <br>: the tight <p> margins in HEAD already
+                // separate paragraphs. Emitting <br> here doubled the vertical gap.
                 out.append("<p>").append(applyInline(line)).append("</p>")
             }
             i += 1
@@ -84,6 +84,17 @@ object SimpleMarkdownRenderer {
         text.replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
+
+    // Tight margins so chat turns read as compact blocks, not double-spaced
+    // prose. JEditorPane's HTMLEditorKit honours a <style> block in the head.
+    private const val HEAD =
+        "<html><head><style>" +
+            "body{font-family:sans-serif;margin:0;padding:0}" +
+            "p{margin:2px 0}" +
+            "ul{margin:2px 0;padding-left:18px}" +
+            "li{margin:0}" +
+            "pre{margin:4px 0}" +
+            "</style></head><body>"
 
     private val BULLET_REGEX = Regex("^\\s*[-*]\\s+")
     private val INLINE_CODE_REGEX = Regex("`([^`]+)`")

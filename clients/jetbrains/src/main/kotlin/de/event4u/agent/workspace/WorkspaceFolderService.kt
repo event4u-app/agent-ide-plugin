@@ -32,7 +32,7 @@ class WorkspaceFolderService(private val project: Project) : Disposable {
         if (started) return
         started = true
 
-        val client = SidecarClient(resolveSidecarPath())
+        val client = SidecarClient(resolveSidecarPath(), workingDir = project.basePath)
         sidecar = client
         runCatching { client.start() }
 

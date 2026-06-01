@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.util.UUID
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit
 class SidecarClient(
     private val serverPath: String,
     private val nodePath: String = "node",
+    private val workingDir: String? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val pending = ConcurrentHashMap<String, SynchronousQueue<Envelope>>()
@@ -47,6 +49,14 @@ class SidecarClient(
         val proc =
             ProcessBuilder(nodePath, serverPath)
                 .redirectErrorStream(false)
+                .apply {
+                    // Spawn the sidecar with the open project as its working
+                    // directory. The Core defaults its `workspaceRoot` (the root
+                    // every read/search/write tool resolves against) to
+                    // `process.cwd()`; without this the sidecar inherits the
+                    // IDE's launch directory and analyses the wrong tree.
+                    workingDir?.let { File(it) }?.takeIf(File::isDirectory)?.let { directory(it) }
+                }
                 .start()
         process = proc
         writer = BufferedWriter(OutputStreamWriter(proc.outputStream, Charsets.UTF_8))

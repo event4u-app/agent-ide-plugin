@@ -9,12 +9,17 @@ import de.event4u.agent.ui.ModelPill
 import de.event4u.agent.ui.Theme
 import de.event4u.agent.ui.WelcomeCard
 import java.awt.BorderLayout
+import java.awt.Component
+import java.awt.Dimension
+import java.awt.Rectangle
 import java.io.File
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JComponent
 import javax.swing.JEditorPane
 import javax.swing.JPanel
+import javax.swing.ScrollPaneConstants
+import javax.swing.Scrollable
 import javax.swing.SwingUtilities
 
 /**
@@ -29,16 +34,12 @@ import javax.swing.SwingUtilities
  * panel itself is presentational.
  */
 class ChatPanel(private val controller: ChatController) : JBPanel<ChatPanel>(BorderLayout()) {
-    private val messagesContainer =
-        JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(Theme.Space.MD)
-            isOpaque = false
-        }
+    private val messagesContainer = MessageListPanel()
     private val messagesScroll =
         JBScrollPane(messagesContainer).apply {
             border = JBUI.Borders.empty()
             verticalScrollBar.unitIncrement = SCROLL_UNIT
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
             viewport.background = Theme.Colors.surface()
             isOpaque = false
         }
@@ -136,6 +137,41 @@ class ChatPanel(private val controller: ChatController) : JBPanel<ChatPanel>(Bor
         composer.setMode(snapshot.mode)
     }
 
+    /**
+     * Vertical message list that tracks the viewport width. Without
+     * [getScrollableTracksViewportWidth] returning `true`, the surrounding
+     * [JBScrollPane] hands the list its (very wide) preferred width instead of
+     * the visible width — so message text ran off to the right and the
+     * `JEditorPane` bodies never wrapped. Tracking the width pins the list to
+     * the viewport, and the cards/editor panes wrap inside it.
+     */
+    private class MessageListPanel : JPanel(), Scrollable {
+        init {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            border = JBUI.Borders.empty(Theme.Space.MD)
+            isOpaque = false
+            alignmentX = Component.LEFT_ALIGNMENT
+        }
+
+        override fun getPreferredScrollableViewportSize(): Dimension = preferredSize
+
+        override fun getScrollableUnitIncrement(
+            visibleRect: Rectangle,
+            orientation: Int,
+            direction: Int,
+        ): Int = SCROLL_UNIT
+
+        override fun getScrollableBlockIncrement(
+            visibleRect: Rectangle,
+            orientation: Int,
+            direction: Int,
+        ): Int = visibleRect.height
+
+        override fun getScrollableTracksViewportWidth(): Boolean = true
+
+        override fun getScrollableTracksViewportHeight(): Boolean = false
+    }
+
     private companion object {
         const val SCROLL_UNIT = 16
     }
@@ -177,5 +213,8 @@ internal fun newChatEditorPane(html: String): JEditorPane =
         text = html
         isEditable = false
         border = JBUI.Borders.empty(Theme.Space.XS)
-        background = Theme.Colors.surface()
+        // Transparent so the parent card's background (tinted user bubble or the
+        // plain surface) shows through instead of a clashing opaque rectangle.
+        isOpaque = false
+        alignmentX = Component.LEFT_ALIGNMENT
     }
