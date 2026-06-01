@@ -19,6 +19,11 @@ import {
   PingRequestSchema,
   MethodNameSchema,
   type RootStatusResponse,
+  type TerminalInputResponse,
+  TerminalInputRequestSchema,
+  type TerminalResizeResponse,
+  TerminalResizeRequestSchema,
+  TerminalSubscribeRequestSchema,
   type WorkspaceFoldersChangedResponse,
   WorkspaceFoldersChangedRequestSchema,
 } from '@event4u-agent/protocol';
@@ -26,6 +31,7 @@ import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import type { AgentTurnHandler } from './agent/turn-handler.js';
 import type { ChatHandler, EnvelopeSink } from './chat/handler.js';
 import { type GitHandler, GitRequestError } from './git/handler.js';
+import { type TerminalHandler, TerminalRequestError } from './terminal/handler.js';
 
 /** A handler maps a validated request payload to a response payload. */
 type Handler = (data: unknown) => Promise<unknown> | unknown;
@@ -51,6 +57,7 @@ export class Dispatcher {
     private readonly chatHandler?: ChatHandler,
     private readonly gitHandler?: GitHandler,
     private readonly agentTurnHandler?: AgentTurnHandler,
+    private readonly terminalHandler?: TerminalHandler,
   ) {
     this.handlers = {
       ping: (): PingResponse => ({ result: 'pong' }),
@@ -84,6 +91,12 @@ export class Dispatcher {
         this.requireGit().prDescription(GitPrDescriptionRequestSchema.parse(data ?? {})),
       gitReviewSummary: (data: unknown): Promise<GitReviewSummaryResponse> =>
         this.requireGit().reviewSummary(GitReviewSummaryRequestSchema.parse(data ?? {})),
+      // Live terminal: input + resize are plain request/response (T-PRD03);
+      // `terminalSubscribe` is streaming and handled in `dispatch` below.
+      terminalInput: (data: unknown): TerminalInputResponse =>
+        this.requireTerminal().handleInput(TerminalInputRequestSchema.parse(data ?? {})),
+      terminalResize: (data: unknown): TerminalResizeResponse =>
+        this.requireTerminal().handleResize(TerminalResizeRequestSchema.parse(data ?? {})),
     };
   }
 
@@ -98,9 +111,21 @@ export class Dispatcher {
     return this.gitHandler;
   }
 
-  /** Release the workspace coordinator's timers (shutdown). */
+  /** The terminal handler or a coded error so absent wiring surfaces cleanly. */
+  private requireTerminal(): TerminalHandler {
+    if (!this.terminalHandler) {
+      throw new TerminalRequestError(
+        'terminal_not_configured',
+        'No terminal handler is configured on this Core instance.',
+      );
+    }
+    return this.terminalHandler;
+  }
+
+  /** Release the workspace coordinator's timers + live terminal sessions (shutdown). */
   dispose(): void {
     this.coordinator.dispose();
+    this.terminalHandler?.dispose();
   }
 
   /**
@@ -163,6 +188,33 @@ export class Dispatcher {
       try {
         const req = AgentTurnRequestSchema.parse(envelope.data ?? {});
         return await this.agentTurnHandler.handleTurn(envelope.messageId, req, emit ?? (() => {}));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const code =
+          typeof (error as { code?: unknown }).code === 'string'
+            ? (error as { code: string }).code
+            : 'handler_error';
+        return this.errorEnvelope(envelope.messageId, code, message);
+      }
+    }
+
+    // Streaming method — the live terminal subscription. Emits the replay +
+    // live events as `done:false` and returns the terminal `exit` envelope.
+    if (method === 'terminalSubscribe') {
+      if (!this.terminalHandler) {
+        return this.errorEnvelope(
+          envelope.messageId,
+          'terminal_not_configured',
+          'No terminal handler is configured on this Core instance.',
+        );
+      }
+      try {
+        const req = TerminalSubscribeRequestSchema.parse(envelope.data ?? {});
+        return await this.terminalHandler.handleSubscribe(
+          envelope.messageId,
+          req,
+          emit ?? (() => {}),
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const code =

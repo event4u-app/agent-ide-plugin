@@ -11,6 +11,8 @@ import { ProviderRegistry } from './llm/provider-registry.js';
 import { PermissionGate } from './permissions/gate.js';
 import type { PricingBook } from './pricing/loader.js';
 import { PLUGIN_STATE_DIR } from './sessions/locations.js';
+import { TerminalHandler } from './terminal/handler.js';
+import { TerminalSessionManager } from './terminal/manager.js';
 import { Dispatcher } from './server.js';
 
 /**
@@ -124,5 +126,11 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     ...(budget ? { budget } : {}),
   });
 
-  return new Dispatcher(coordinator, chatHandler, gitHandler, agentTurnHandler);
+  // Live-terminal handler (T-PRD03). The manager owns the session map; the
+  // spawn path that populates it (a future `run_shell` agent tool) and the real
+  // env-gated `node-pty` factory stay native-/IDE-gated, so until they land the
+  // manager defaults to the deterministic Fake terminal and holds no sessions.
+  const terminalHandler = new TerminalHandler({ manager: new TerminalSessionManager() });
+
+  return new Dispatcher(coordinator, chatHandler, gitHandler, agentTurnHandler, terminalHandler);
 }
