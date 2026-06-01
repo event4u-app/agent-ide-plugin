@@ -27,6 +27,7 @@ import { CancellationToken } from '../llm/cancellation.js';
 import type { AuditRecorder } from '../permissions/audit.js';
 import type { PermissionDecision, PermissionGate } from '../permissions/gate.js';
 import type { PricingBook } from '../pricing/loader.js';
+import { buildStepEvent, type StepRecorder } from '../tracking/step-recorder.js';
 import {
   previewArgs,
   runToolCallWithApproval,
@@ -96,6 +97,15 @@ export interface AgentTurnHandlerDeps {
   pricing?: PricingBook;
   /** Optional daily-budget recorder (records real-cost turns, surfaces status). */
   budget?: BudgetRecorder;
+  /**
+   * Optional step-event recorder (T-408 wiring, ADR-035). Persists ONE priced
+   * {@link StepEvent} per agent turn (`activity: 'agent'`, aggregated usage) to
+   * the tracking trail the Cost Dashboard reads — recorded once at the same
+   * finalize point as {@link recordSpend} (an errored turn throws earlier and is
+   * never recorded). Only when a pricing book + known model supply a positive
+   * `pricing_book_version`. Fail-open.
+   */
+  step?: StepRecorder;
   /** Optional audit trail for hard-floor blocks + approval decisions. */
   audit?: AuditRecorder;
   /** Default iteration cap when the request omits `maxIterations`. Default 10. */
@@ -177,6 +187,7 @@ export class AgentTurnHandler {
     }
     const token = new CancellationToken();
     this.active.set(req.conversationId, token);
+    const startedAt = Date.now();
     try {
       const existing = await this.deps.store.load(req.conversationId);
       if (!existing) await this.deps.store.create({ id: req.conversationId });
@@ -192,6 +203,9 @@ export class AgentTurnHandler {
         role: m.role,
         content: m.content,
       }));
+      // Per-conversation step index for the tracking trail (ADR-035): the count
+      // of prior assistant turns persisted here is this turn's 0-based index.
+      const stepIndex = (convo?.messages ?? []).filter((m) => m.role === 'assistant').length;
 
       const backend = this.deps.resolveBackend(req.providerId);
       const model = this.deps.resolveModel(req.providerId);
@@ -312,6 +326,18 @@ export class AgentTurnHandler {
 
       const cost = this.computeCost(model, backend.mode, aggUsage);
       const budget = await this.recordSpend(cost, req.conversationId, model);
+      // One priced step row per agent turn (aggregated usage, `activity: 'agent'`)
+      // for the Cost Dashboard (ADR-035). Same once-semantics as recordSpend.
+      await this.recordStep({
+        conversationId: req.conversationId,
+        stepIndex,
+        mode: backend.mode,
+        model,
+        stopReason,
+        usage: aggUsage,
+        cost,
+        durationMs: Date.now() - startedAt,
+      });
 
       // One `annotations` union for the turn: the context snippets the model
       // saw at loop start (EXACTLY `injection.used` — what was folded into
@@ -549,6 +575,44 @@ export class AgentTurnHandler {
       return toWireBudget(status);
     } catch {
       return undefined;
+    }
+  }
+
+  /**
+   * Persist one priced step row for the agent turn (ADR-035). No-op unless a
+   * recorder is injected AND a pricing book + known model supply the required
+   * positive `pricing_book_version`. `usd` is the recorded book-rate cost (real
+   * for api, shadow for cli). Fail-open: a write error never breaks the turn.
+   */
+  private async recordStep(input: {
+    conversationId: string;
+    stepIndex: number;
+    mode: LlmMode;
+    model: string;
+    stopReason: string;
+    usage: LlmUsage;
+    cost: ChatCost;
+    durationMs: number;
+  }): Promise<void> {
+    const recorder = this.deps.step;
+    const pricing = this.deps.pricing;
+    if (!recorder || !pricing || !pricing.getModel(input.model)) return;
+    try {
+      const event = buildStepEvent({
+        conversationId: input.conversationId,
+        stepIndex: input.stepIndex,
+        activity: 'agent',
+        mode: input.mode,
+        model: input.model,
+        stopReason: input.stopReason,
+        usage: input.usage,
+        usd: input.cost.totalUsd,
+        pricingBookVersion: pricing.data.version,
+        durationMs: input.durationMs,
+      });
+      await recorder.writeStep(event);
+    } catch {
+      // Best-effort: a tracking write must never break the turn.
     }
   }
 

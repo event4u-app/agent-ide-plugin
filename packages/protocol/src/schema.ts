@@ -998,6 +998,44 @@ export const GitReviewApplyFixResponseSchema = z.object({
 });
 export type GitReviewApplyFixResponse = z.infer<typeof GitReviewApplyFixResponseSchema>;
 
+// --- costReport query (recorded step-event aggregates; T-707 backend) ----
+//
+// The Cost Dashboard (v1-0 T-707) is an IDE-render surface, but its DATA comes
+// from the recorded `step_events.jsonl` trail (MVP T-408). This read method
+// folds that trail into the aggregate widgets the dashboard draws: a daily
+// total, per-activity / per-mode / per-model breakdowns, and the CLI "shadow"
+// cost (what the flat-subscription usage WOULD have cost on the metered API,
+// T-1404). The wire shape is intentionally a focused aggregate — the client
+// renders donuts/bars, it never re-derives accounting rules. `totalUsd` is the
+// book-rate cost across BOTH modes; `byMode` splits real (api) from shadow
+// (cli); `shadowApiUsd` is the explicit CLI-only shadow figure.
+
+export const CostReportRequestSchema = z.object({
+  /** Optional inclusive ISO-8601 lower bound on `step.ts`. */
+  since: z.string().optional(),
+  /** Optional inclusive ISO-8601 upper bound on `step.ts`. */
+  until: z.string().optional(),
+});
+export type CostReportRequest = z.infer<typeof CostReportRequestSchema>;
+
+export const CostReportResponseSchema = z.object({
+  /** Book-rate USD across all counted steps (api real + cli shadow). */
+  totalUsd: z.number().nonnegative(),
+  /** Number of step events counted in the window. */
+  stepCount: z.number().int().nonnegative(),
+  /** Book-rate USD grouped by activity (`agent` / `chat` / `review` / …). */
+  byActivity: z.record(z.number().nonnegative()),
+  /** Book-rate USD grouped by mode (`api` real spend vs `cli` shadow). */
+  byMode: z.record(z.number().nonnegative()),
+  /** Book-rate USD grouped by model id. */
+  byModel: z.record(z.number().nonnegative()),
+  /** CLI-only shadow cost: what the cli-mode steps would have cost on the API. */
+  shadowApiUsd: z.number().nonnegative(),
+  /** Number of cli-mode steps that fed `shadowApiUsd`. */
+  cliStepCount: z.number().int().nonnegative(),
+});
+export type CostReportResponse = z.infer<typeof CostReportResponseSchema>;
+
 // --- method registry ----------------------------------------------------
 
 /**
@@ -1043,6 +1081,7 @@ export const Methods = {
     request: GitReviewApplyFixRequestSchema,
     response: GitReviewApplyFixResponseSchema,
   },
+  costReport: { request: CostReportRequestSchema, response: CostReportResponseSchema },
 } as const;
 
 export type MethodName = keyof typeof Methods;

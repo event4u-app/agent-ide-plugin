@@ -5,6 +5,8 @@ import {
   ChatSendRequestSchema,
   type ConnectResponse,
   ConnectRequestSchema,
+  type CostReportResponse,
+  CostReportRequestSchema,
   type Envelope,
   type EchoRequest,
   type EchoResponse,
@@ -33,6 +35,7 @@ import {
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import type { AgentTurnHandler } from './agent/turn-handler.js';
 import type { ChatHandler, EnvelopeSink } from './chat/handler.js';
+import { type CostReporter, CostRequestError } from './cost/report.js';
 import { type GitHandler, GitRequestError } from './git/handler.js';
 import { type TerminalHandler, TerminalRequestError } from './terminal/handler.js';
 import { detectReadiness, type DetectProbes } from './onboarding/detect.js';
@@ -66,6 +69,9 @@ export class Dispatcher {
     // First-run host readiness (T-PRD12). Defaults to live host probes;
     // injectable so the dispatcher test pins Node/key/CLI deterministically.
     private readonly onboardingProbes: DetectProbes = defaultDetectProbes(),
+    // Cost Dashboard backend (T-707; ADR-035). Reads the recorded step trail and
+    // aggregates it; absent → `costReport` returns `cost_not_configured`.
+    private readonly costReporter?: CostReporter,
   ) {
     this.handlers = {
       ping: (): PingResponse => ({ result: 'pong' }),
@@ -103,6 +109,9 @@ export class Dispatcher {
         this.requireGit().reviewSummary(GitReviewSummaryRequestSchema.parse(data ?? {})),
       gitReviewApplyFix: (data: unknown): Promise<GitReviewApplyFixResponse> =>
         this.requireGit().reviewApplyFix(GitReviewApplyFixRequestSchema.parse(data ?? {})),
+      // Cost Dashboard backend (T-707; ADR-035): aggregate the recorded step trail.
+      costReport: (data: unknown): Promise<CostReportResponse> =>
+        this.requireCost().report(CostReportRequestSchema.parse(data ?? {})),
       // Live terminal: input + resize are plain request/response (T-PRD03);
       // `terminalSubscribe` is streaming and handled in `dispatch` below.
       terminalInput: (data: unknown): TerminalInputResponse =>
@@ -121,6 +130,17 @@ export class Dispatcher {
       );
     }
     return this.gitHandler;
+  }
+
+  /** The cost reporter or a coded error so absent wiring surfaces cleanly. */
+  private requireCost(): CostReporter {
+    if (!this.costReporter) {
+      throw new CostRequestError(
+        'cost_not_configured',
+        'No cost reporter is configured on this Core instance.',
+      );
+    }
+    return this.costReporter;
   }
 
   /** The terminal handler or a coded error so absent wiring surfaces cleanly. */

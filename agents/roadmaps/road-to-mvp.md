@@ -121,7 +121,8 @@ complexity: heavy
 
 - [ ] Demo target passes in PhpStorm 2024.2+ AND VS Code 1.90+.
 - [ ] `/commit` works in both API mode and Claude CLI mode (toggle switches mid-conversation).
-- [ ] `tracking.db` has rows for every step of the demo, with `pricing_book_version` populated.
+- [ ] `tracking.db` has rows for every step of the demo, with `pricing_book_version` populated. <!-- engine done 2026-06-02 (feat/v1-0-live-step-tracking, ADR-035): the live ChatHandler + AgentTurnHandler now persist one priced StepEvent per turn (with pricing_book_version) to the TrackingDb constructed in buildCoreDispatcher; verified by core handler-tracking tests. Stays `[ ]` — the criterion is the running IDE demo writing those rows end-to-end, which needs a GUI session. -->
+
 - [ ] Hard cap demo fires the confirm-dialog at the prepared trigger point.
 - [ ] Stop button kills a sleeping-subprocess scenario in <4s.
 - [ ] Team feedback captured. If a critical demand emerged (e.g., "we want `/release-notes` not `/commit`"), it's logged as a Sprint-5 candidate, not a Sprint-4 slip.

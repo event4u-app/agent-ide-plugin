@@ -419,6 +419,25 @@ data class GitReviewApplyFixResponse(
     val reason: String? = null,
 )
 
+/** costReport request — optional inclusive ISO-8601 window over step.ts (T-707 backend). */
+@Serializable
+data class CostReportRequest(
+    val since: String? = null,
+    val until: String? = null,
+)
+
+/** Aggregated step-event cost report feeding the Cost Dashboard widgets (T-707). */
+@Serializable
+data class CostReportResponse(
+    val totalUsd: Double,
+    val stepCount: Int,
+    val byActivity: Map<String, Double> = emptyMap(),
+    val byMode: Map<String, Double> = emptyMap(),
+    val byModel: Map<String, Double> = emptyMap(),
+    val shadowApiUsd: Double,
+    val cliStepCount: Int,
+)
+
 /** The typed event union streamed on the terminalSubscribe channel (Phase 9). */
 @Serializable
 @JsonClassDiscriminator("kind")

@@ -20,6 +20,7 @@ import type { LlmBackend } from '../llm/backend.js';
 import { LlmStreamError } from '../llm/backend.js';
 import { CancellationToken } from '../llm/cancellation.js';
 import type { PricingBook } from '../pricing/loader.js';
+import { buildStepEvent, type StepRecorder } from '../tracking/step-recorder.js';
 import { buildContextInjection } from './context-injection.js';
 import type { ConversationStore } from './store.js';
 import { resolveSystemPrompt, type LoadGuidelines } from './system-prompt.js';
@@ -84,6 +85,16 @@ export interface ChatHandlerDeps {
    */
   budget?: BudgetRecorder;
   /**
+   * Optional step-event recorder (T-408 wiring, ADR-035). When set, the handler
+   * persists ONE priced {@link StepEvent} per turn (`activity: 'chat'`) to the
+   * tracking trail the Cost Dashboard reads. Recorded at the SAME finalize point
+   * as {@link recordSpend} — so an errored turn (thrown earlier) never records,
+   * a cancelled turn records its partial usage at most once. Only recorded when
+   * a pricing book + known model supply a positive `pricing_book_version`
+   * (mirrors the estimate gate). Fail-open: a write error never breaks the turn.
+   */
+  step?: StepRecorder;
+  /**
    * Optional workspace-guidelines loader (T-1307, AI council 2026-06-01,
    * UNANIMOUS A2/C2/D1/E1/F1). When set, the handler folds the current
    * guidelines into the turn's `system` prompt (composed FRESH per turn so an
@@ -133,6 +144,7 @@ export class ChatHandler {
     }
     const token = new CancellationToken();
     this.active.set(req.conversationId, token);
+    const startedAt = Date.now();
     try {
       // Persist the user turn (create the conversation on first use).
       const existing = await this.deps.store.load(req.conversationId);
@@ -148,6 +160,10 @@ export class ChatHandler {
         role: m.role,
         content: m.content,
       }));
+      // Monotonic per-conversation step index for the tracking trail (ADR-035):
+      // the count of prior assistant turns persisted here is this turn's 0-based
+      // index. Derived from persisted history → restart-safe, no process counter.
+      const stepIndex = (convo?.messages ?? []).filter((m) => m.role === 'assistant').length;
       const backend = this.deps.resolveBackend(req.providerId);
       const model = this.deps.resolveModel(req.providerId);
       // Retrieve scoped context, then fold both the context block and the
@@ -229,6 +245,18 @@ export class ChatHandler {
       // normal + cancel paths but NOT on a thrown backend error (which exits
       // above) — so an errored turn never debits the budget.
       const budget = await this.recordSpend(cost, req.conversationId, model);
+      // Persist one priced step row for the Cost Dashboard (ADR-035). Same
+      // finalize point + once semantics as recordSpend; fail-open.
+      await this.recordStep({
+        conversationId: req.conversationId,
+        stepIndex,
+        mode: backend.mode,
+        model,
+        stopReason,
+        usage,
+        cost,
+        durationMs: Date.now() - startedAt,
+      });
 
       const response: ChatSendResponse = {
         messageId: stored?.id ?? messageId,
@@ -335,6 +363,46 @@ export class ChatHandler {
       return toWireBudget(status);
     } catch {
       return undefined;
+    }
+  }
+
+  /**
+   * Persist one priced step row for the turn (ADR-035). No-op unless a recorder
+   * is injected AND a pricing book + known model supply the required positive
+   * `pricing_book_version` (mirrors the estimate gate — an unpriced/unknown-model
+   * turn has no version, so it is simply not tracked). `usd` is the recorded
+   * book-rate cost (real for api, shadow for cli). Fail-open: a write error
+   * never breaks the turn.
+   */
+  private async recordStep(input: {
+    conversationId: string;
+    stepIndex: number;
+    mode: LlmMode;
+    model: string;
+    stopReason: string;
+    usage: LlmUsage;
+    cost: ChatCost;
+    durationMs: number;
+  }): Promise<void> {
+    const recorder = this.deps.step;
+    const pricing = this.deps.pricing;
+    if (!recorder || !pricing || !pricing.getModel(input.model)) return;
+    try {
+      const event = buildStepEvent({
+        conversationId: input.conversationId,
+        stepIndex: input.stepIndex,
+        activity: 'chat',
+        mode: input.mode,
+        model: input.model,
+        stopReason: input.stopReason,
+        usage: input.usage,
+        usd: input.cost.totalUsd,
+        pricingBookVersion: pricing.data.version,
+        durationMs: input.durationMs,
+      });
+      await recorder.writeStep(event);
+    } catch {
+      // Best-effort: a tracking write must never break the turn.
     }
   }
 
