@@ -6,6 +6,17 @@ import { buildDefaultToolRegistry, MapToolRegistry, type RegisteredTool } from '
 import { TerminalSessionManager } from '../terminal/manager.js';
 import type { FakeTerminal } from '../terminal/pty.js';
 import type { RunShellResult } from '../tools/run-shell.js';
+import { LanguageRegistry } from '../context/languages.js';
+import type { Diagnostic, DiagnosticProvider, SyntaxIssue } from '../tools/validate-edit.js';
+
+/** The shape `writeFilesEntry.execute()` folds into its `output` on issues. */
+interface FileValidation {
+  file: string;
+  newDiagnostics: Diagnostic[];
+  syntax?: SyntaxIssue;
+  leftover?: string;
+}
+type WriteOutput = { applied: string[]; validation?: FileValidation[] };
 
 async function tempWorkspace(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'tool-registry-'));
@@ -142,6 +153,122 @@ describe('buildDefaultToolRegistry', () => {
     const result = await execution;
     expect(result.ok).toBe(false);
     expect((result.output as RunShellResult).exitCode).toBe(2);
+  });
+});
+
+describe('write_files post-write delta-gate (T-702b)', () => {
+  it('surfaces a leftover marker without a registry, write still ok (B1)', async () => {
+    const root = await tempWorkspace();
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root });
+    const prepared = await registry.get('write_files')!.prepare({
+      edits: [
+        { file: 'note.ts', originalCode: '', newCode: 'const a = 1;\n// ... rest of code\n' },
+      ],
+    });
+    const result = await prepared.execute();
+    // The atomic write succeeded → ok stays true; the leftover finding is
+    // advisory feedback folded into the output for the next model turn.
+    expect(result.ok).toBe(true);
+    expect(result.changedFiles).toEqual(['note.ts']);
+    const output = result.output as WriteOutput;
+    expect(output.validation?.[0]?.file).toBe('note.ts');
+    expect(output.validation?.[0]?.leftover).toBeDefined();
+    expect(result.outputPreview).toContain('leftover marker');
+    // The file is on disk despite the validation finding (no rollback).
+    expect(await readFile(join(root, 'note.ts'), 'utf8')).toContain('rest of code');
+  });
+
+  it('surfaces a tree-sitter syntax error when a language registry is wired (E1/F1)', async () => {
+    const root = await tempWorkspace();
+    const registry = buildDefaultToolRegistry({
+      workspaceRoot: root,
+      languageRegistry: new LanguageRegistry(),
+    });
+    const prepared = await registry.get('write_files')!.prepare({
+      edits: [{ file: 'broken.ts', originalCode: '', newCode: 'export const x: number = ;\n' }],
+    });
+    const result = await prepared.execute();
+    expect(result.ok).toBe(true);
+    const output = result.output as WriteOutput;
+    expect(output.validation?.[0]?.syntax?.source).toBe('tree-sitter');
+    expect(result.outputPreview).toContain('syntax error');
+  });
+
+  it('omits the validation key for a clean edit', async () => {
+    const root = await tempWorkspace();
+    const registry = buildDefaultToolRegistry({
+      workspaceRoot: root,
+      languageRegistry: new LanguageRegistry(),
+    });
+    const prepared = await registry.get('write_files')!.prepare({
+      edits: [{ file: 'clean.ts', originalCode: '', newCode: 'export const x: number = 1;\n' }],
+    });
+    const result = await prepared.execute();
+    expect(result.ok).toBe(true);
+    expect((result.output as WriteOutput).validation).toBeUndefined();
+    expect(result.outputPreview).not.toContain('validation issues');
+  });
+
+  it('scans only the generated newCode, not pre-existing file markers (C1)', async () => {
+    const root = await tempWorkspace();
+    // The file already carries a leftover-shaped comment the model did NOT write.
+    await writeFile(join(root, 'legacy.ts'), 'const keep = 1; // TODO: implement later\n', 'utf8');
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root });
+    const prepared = await registry.get('write_files')!.prepare({
+      edits: [{ file: 'legacy.ts', originalCode: 'const keep = 1;', newCode: 'const keep = 2;' }],
+    });
+    const result = await prepared.execute();
+    // No false positive: the scan sees only the clean replacement block.
+    expect((result.output as WriteOutput).validation).toBeUndefined();
+  });
+
+  it('surfaces only NEWLY-introduced diagnostics via an injected provider (D1/G)', async () => {
+    const root = await tempWorkspace();
+    const introduced: Diagnostic = {
+      source: 'tsc',
+      file: 'app.ts',
+      line: 1,
+      code: 'TS2304',
+      severity: 'error',
+      message: "Cannot find name 'oops'.",
+    };
+    // Baseline (prepare, 1st call) is clean; after (execute, 2nd call) has the
+    // new error — the delta-gate reports exactly the surplus.
+    let call = 0;
+    const diagnostics: DiagnosticProvider = {
+      diagnostics: () => Promise.resolve(call++ === 0 ? [] : [introduced]),
+    };
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root, diagnostics });
+    const prepared = await registry.get('write_files')!.prepare({
+      edits: [{ file: 'app.ts', originalCode: '', newCode: 'oops();\n' }],
+    });
+    const result = await prepared.execute();
+    const output = result.output as WriteOutput;
+    expect(output.validation?.[0]?.newDiagnostics).toHaveLength(1);
+    expect(output.validation?.[0]?.newDiagnostics[0]?.code).toBe('TS2304');
+    expect(result.outputPreview).toContain('1 new diagnostic(s)');
+  });
+
+  it('reports no new diagnostics when the provider sees the same set before and after', async () => {
+    const root = await tempWorkspace();
+    const preexisting: Diagnostic = {
+      source: 'eslint',
+      file: 'app.ts',
+      line: 9,
+      code: 'no-console',
+      severity: 'warning',
+      message: 'Unexpected console statement.',
+    };
+    // Same diagnostic in baseline and after → a line shift must NOT report it.
+    const diagnostics: DiagnosticProvider = {
+      diagnostics: () => Promise.resolve([preexisting]),
+    };
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root, diagnostics });
+    const prepared = await registry.get('write_files')!.prepare({
+      edits: [{ file: 'app.ts', originalCode: '', newCode: 'const x = 1;\n' }],
+    });
+    const result = await prepared.execute();
+    expect((result.output as WriteOutput).validation).toBeUndefined();
   });
 });
 

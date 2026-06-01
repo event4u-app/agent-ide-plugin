@@ -5,6 +5,7 @@ import { ChatHandler } from './chat/handler.js';
 import { FileConversationStore, type ConversationStore } from './chat/store.js';
 import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
+import { LanguageRegistry } from './context/languages.js';
 import { FileGuidelinesStore, type GuidelinesStore } from './guidelines/guidelines.js';
 import { GitHandler } from './git/handler.js';
 import { ProviderRegistry } from './llm/provider-registry.js';
@@ -123,7 +124,15 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     resolveModel: (providerId) => registry.resolveModel(providerId),
     store,
     gate: new PermissionGate({ filePath: join(cwd, PLUGIN_STATE_DIR, 'permissions.json') }),
-    registry: buildDefaultToolRegistry({ workspaceRoot: cwd, terminalManager }),
+    // The post-write delta-gate (T-702b): a shared fail-soft tree-sitter
+    // registry enables the leftover-marker + syntax layers. The richer
+    // newly-introduced-diagnostics layer stays unwired until the IDE supplies a
+    // `DiagnosticProvider` over the protocol (no tsc/eslint shelling in core).
+    registry: buildDefaultToolRegistry({
+      workspaceRoot: cwd,
+      terminalManager,
+      languageRegistry: new LanguageRegistry(),
+    }),
     decide: () => Promise.resolve('deny'),
     pricing: options.pricing,
     loadGuidelines,
