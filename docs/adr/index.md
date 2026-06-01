@@ -24,6 +24,7 @@
 | [ADR-018](ADR-018-abortable-streaming-refinements.md) | Abortable Streaming Refinements — Cooperative AbortSignal Through Embedding, MCP Tool Calls, and Session Scans (Trailing-Param, AbortError Reject, Request-Scoped MCP Cancel, Fail-Open Re-Throw) | Proposed | 2026-05-31 | road-to-v1-0 Phase 13 (T-1305) |
 | [ADR-019](ADR-019-context-snippet-annotations.md) | Context-Snippet Annotations — SweepAI Message.annotations Wire Contract, Pure Builder over Scored Retrieval (Discriminated-Union Model, Additive Scored Retrieve, Core Path-Classification, Normalized Relevance, Bounded Preview) | Proposed | 2026-06-01 | road-to-v1-0 Phase 13 (T-1308) |
 | [ADR-020](ADR-020-code-suggestion-annotations.md) | Code-Suggestion Annotations — Second Message.annotations Member, SweepAI Suggestion State Machine (Standalone from ToolCallEvent, Flat-Enum Wire State, Pure Reducer, Built from WriteFilesPlan, Bounded Diff Preview, No-Op Invalid Transitions) | Proposed | 2026-06-01 | road-to-v1-0 Phase 10/13 (Message.annotations contract) |
+| [ADR-021](ADR-021-status-row-annotations.md) | Status-Row Annotations — Third Message.annotations Member, SweepAI Progress-Strings Surface (Durable over Transient, `active` State, Optional Phase on the Wire, Generic Descriptor Builder + Mode-Aware Wrapper, Detail-Only Progress Event, No-Op Invalid Transitions) | Proposed | 2026-06-01 | road-to-v1-0 Phase 13 (Message.annotations contract) |
 
 ## Status legend
 
