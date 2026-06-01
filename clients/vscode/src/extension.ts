@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -7,7 +8,7 @@ import { ChatController } from './chat-controller.js';
 import { mapWorkspaceFolders, mapWorkspaceFoldersChange } from './workspace-folders.js';
 import { buildChatHtml } from './webview/chat-html.js';
 import { formatStatusbar } from './webview/cost-format.js';
-import type { ChatModelSnapshot } from './webview/chat-model.js';
+import type { ChatModelSnapshot, ConversationMode } from './webview/chat-model.js';
 
 let sidecar: SidecarClient | undefined;
 
@@ -19,6 +20,44 @@ let sidecar: SidecarClient | undefined;
 function resolveSidecarEnv(): NodeJS.ProcessEnv {
   const key = vscode.workspace.getConfiguration('event4u').get<string>('anthropicApiKey');
   return key ? { ANTHROPIC_API_KEY: key } : {};
+}
+
+/**
+ * Probe whether a conversation mode's provider can actually serve a turn, so
+ * the chat's status dot reads green (available) vs red (unavailable):
+ *  - `cli` — spawn `claude --version` (same env the sidecar inherits) and
+ *    succeed on exit 0; ENOENT / non-zero / timeout → unavailable.
+ *  - `api` — an Anthropic key is configured (setting or inherited env).
+ *
+ * The CLI probe mirrors how {@link ClaudeCliBackend} resolves its binary, so a
+ * GUI-launched VS Code missing `/opt/homebrew/bin` on PATH reports red instead
+ * of failing silently mid-turn.
+ */
+function makeAvailabilityProbe(
+  env: NodeJS.ProcessEnv,
+): (mode: ConversationMode) => Promise<boolean> {
+  const childEnv = { ...process.env, ...env };
+  return (mode) => {
+    if (mode === 'api') {
+      return Promise.resolve(Boolean(childEnv.ANTHROPIC_API_KEY));
+    }
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const done = (ok: boolean): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => {
+        child.kill('SIGTERM');
+        done(false);
+      }, 4000);
+      const child = spawn('claude', ['--version'], { env: childEnv, stdio: 'ignore' });
+      child.on('error', () => done(false));
+      child.on('exit', (code) => done(code === 0));
+    });
+  };
 }
 
 /**
@@ -91,14 +130,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // Sidecar may already be running — surface health via the snapshot.
     }
     const healthy = await sidecar.healthy().catch(() => false);
+    const probeAvailability = makeAvailabilityProbe(resolveSidecarEnv());
+    const initialMode: ConversationMode =
+      vscode.workspace.getConfiguration('event4u').get<string>('defaultMode') === 'cli'
+        ? 'cli'
+        : 'api';
     const initialSnapshot: ChatModelSnapshot = {
       messages: [],
-      mode:
-        vscode.workspace.getConfiguration('event4u').get<string>('defaultMode') === 'cli'
-          ? 'cli'
-          : 'api',
+      mode: initialMode,
       streamingSummary: null,
       sidecarHealthy: healthy,
+      // Optimistic until the webview's `ready` probe corrects it (~instant).
+      providerAvailable: true,
     };
 
     const scriptUri = panel.webview
@@ -114,7 +157,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Real chat: bridge webview send/stop/toggle to the sidecar's streaming
     // chatSend / chatCancel (road-to-vertical-slice Phase 2).
-    const controller = new ChatController(sidecar, panel.webview, healthy, initialSnapshot.mode);
+    const controller = new ChatController(
+      sidecar,
+      panel.webview,
+      healthy,
+      initialMode,
+      probeAvailability,
+    );
     panel.webview.onDidReceiveMessage((message: unknown) =>
       controller.handle((message ?? {}) as { kind?: string; text?: string }),
     );

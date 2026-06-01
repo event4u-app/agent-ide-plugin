@@ -91,6 +91,46 @@ describe('ChatController', () => {
     expect(sentData.providerId).toBe('claude-cli');
   });
 
+  it('probes provider availability on ready and pushes a red dot when unavailable', async () => {
+    const sidecar: SidecarLike = {
+      requestStream: () =>
+        Promise.resolve({ messageId: 'm', messageType: 'chatSend', data: {}, done: true }),
+      request: () =>
+        Promise.resolve({ messageId: 'c', messageType: 'chatCancel', data: {}, done: true }),
+    };
+    const web = new CapturingWebview();
+    const seen: string[] = [];
+    const controller = new ChatController(sidecar, web, true, 'cli', (mode) => {
+      seen.push(mode);
+      return false; // claude binary missing
+    });
+    controller.handle({ kind: 'ready' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(seen).toEqual(['cli']);
+    expect(web.last().providerAvailable).toBe(false);
+  });
+
+  it('re-probes for the new mode on toggle', async () => {
+    const sidecar: SidecarLike = {
+      requestStream: () =>
+        Promise.resolve({ messageId: 'm', messageType: 'chatSend', data: {}, done: true }),
+      request: () =>
+        Promise.resolve({ messageId: 'c', messageType: 'chatCancel', data: {}, done: true }),
+    };
+    const web = new CapturingWebview();
+    // Available only in api mode; toggling to cli must flip the dot red.
+    const controller = new ChatController(sidecar, web, true, 'api', (mode) => mode === 'api');
+    controller.handle({ kind: 'ready' });
+    await Promise.resolve();
+    expect(web.last().providerAvailable).toBe(true);
+    controller.handle({ kind: 'toggle-mode' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(web.last().mode).toBe('cli');
+    expect(web.last().providerAvailable).toBe(false);
+  });
+
   it('renders an error terminal as a warning line', async () => {
     const sidecar: SidecarLike = {
       requestStream() {

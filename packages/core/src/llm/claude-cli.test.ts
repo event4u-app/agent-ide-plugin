@@ -3,7 +3,7 @@ import type { LlmUsage } from '@event4u-agent/protocol';
 import { serializeRequest, translate } from './claude-cli.js';
 
 describe('serializeRequest', () => {
-  it('emits one JSONL line with the last user message', () => {
+  it('emits one Messages-API-shaped JSONL line with the last user message', () => {
     const out = serializeRequest({
       model: 'claude-sonnet-4-6',
       messages: [
@@ -14,7 +14,7 @@ describe('serializeRequest', () => {
     });
     expect(out.endsWith('\n')).toBe(true);
     const parsed = JSON.parse(out.trim());
-    expect(parsed).toEqual({ type: 'user', text: 'Hi', model: 'claude-sonnet-4-6' });
+    expect(parsed).toEqual({ type: 'user', message: { role: 'user', content: 'Hi' } });
   });
 
   it('serializes structured content to a JSON string', () => {
@@ -24,48 +24,75 @@ describe('serializeRequest', () => {
       max_tokens: 2048,
     });
     const parsed = JSON.parse(out.trim());
-    expect(typeof parsed.text).toBe('string');
-    expect(parsed.text).toMatch(/Hi/);
+    expect(typeof parsed.message.content).toBe('string');
+    expect(parsed.message.content).toMatch(/Hi/);
   });
 });
 
 describe('translate', () => {
   const usage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
 
-  it('text → text_delta', () => {
-    expect(translate({ type: 'text', text: 'hi' }, { ...usage })).toEqual({
-      kind: 'text_delta',
-      text: 'hi',
-    });
+  it('assistant message → text_delta from message.content text blocks', () => {
+    expect(
+      translate(
+        {
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }] },
+        },
+        { ...usage },
+      ),
+    ).toEqual({ kind: 'text_delta', text: 'hi' });
   });
 
-  it('tool_use → tool_use_start', () => {
-    expect(translate({ type: 'tool_use', id: 't1', name: 'read_file' }, { ...usage })).toEqual({
-      kind: 'tool_use_start',
-      id: 't1',
-      name: 'read_file',
-    });
+  it('assistant joins multiple text blocks and skips non-text blocks', () => {
+    expect(
+      translate(
+        {
+          type: 'assistant',
+          message: {
+            content: [
+              { type: 'text', text: 'foo' },
+              { type: 'tool_use', id: 't1', name: 'Read' },
+              { type: 'text', text: 'bar' },
+            ],
+          },
+        },
+        { ...usage },
+      ),
+    ).toEqual({ kind: 'text_delta', text: 'foobar' });
   });
 
-  it('thinking → thinking_delta', () => {
-    expect(translate({ type: 'thinking', text: 'thinking out loud' }, { ...usage })).toEqual({
-      kind: 'thinking_delta',
-      text: 'thinking out loud',
-    });
+  it('assistant with no text blocks → undefined', () => {
+    expect(
+      translate(
+        { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Read' }] } },
+        { ...usage },
+      ),
+    ).toBeUndefined();
   });
 
-  it('result populates usage and emits stop', () => {
+  it('result populates usage (incl. cache) and emits stop', () => {
     const u = { ...usage };
     const out = translate(
       {
         type: 'result',
-        usage: { input_tokens: 10, output_tokens: 5 },
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_read_input_tokens: 7,
+          cache_creation_input_tokens: 3,
+        },
         stop_reason: 'end_turn',
       },
       u,
     );
     expect(out).toMatchObject({ kind: 'stop', reason: 'end_turn' });
-    expect(u).toMatchObject({ input_tokens: 10, output_tokens: 5 });
+    expect(u).toMatchObject({
+      input_tokens: 10,
+      output_tokens: 5,
+      cache_read_input_tokens: 7,
+      cache_creation_input_tokens: 3,
+    });
   });
 
   it('falls back to end_turn for unknown stop reasons', () => {
@@ -82,7 +109,9 @@ describe('translate', () => {
     );
   });
 
-  it('unknown event type returns undefined', () => {
-    expect(translate({ type: 'mystery' }, { ...usage })).toBeUndefined();
+  it('control frames (system, rate_limit_event, user echo) return undefined', () => {
+    expect(translate({ type: 'system', subtype: 'init' }, { ...usage })).toBeUndefined();
+    expect(translate({ type: 'rate_limit_event' }, { ...usage })).toBeUndefined();
+    expect(translate({ type: 'user', message: { content: [] } }, { ...usage })).toBeUndefined();
   });
 });

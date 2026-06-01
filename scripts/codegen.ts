@@ -441,7 +441,7 @@ const sealedUnions: SealedUnion[] = [
   },
   {
     name: 'Annotation',
-    doc: 'Chat-turn artifacts (SweepAI Message.annotations): context-snippet + code-suggestion members.',
+    doc: 'Chat-turn artifacts (SweepAI Message.annotations): context-snippet + code-suggestion + status-row.',
     variants: [
       {
         kind: 'context-snippet',
@@ -465,6 +465,17 @@ const sealedUnions: SealedUnion[] = [
           { name: 'state', kotlinType: 'String' },
           { name: 'diffPreview', kotlinType: 'String' },
           { name: 'errorMessage', kotlinType: 'String?', default: 'null' },
+        ],
+      },
+      {
+        kind: 'status-row',
+        className: 'StatusRowAnnotation',
+        fields: [
+          { name: 'statusId', kotlinType: 'String' },
+          { name: 'label', kotlinType: 'String' },
+          { name: 'state', kotlinType: 'String' },
+          { name: 'phase', kotlinType: 'String?', default: 'null' },
+          { name: 'detail', kotlinType: 'String?', default: 'null' },
         ],
       },
     ],

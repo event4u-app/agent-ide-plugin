@@ -117,6 +117,7 @@ describe('renderSnapshot', () => {
       mode: 'api',
       streamingSummary: null,
       sidecarHealthy: true,
+      providerAvailable: true,
       ...partial,
     };
   }
@@ -129,6 +130,9 @@ describe('renderSnapshot', () => {
   it('classifies status', () => {
     expect(renderSnapshot(snapshot()).statusClass).toBe('e4u-status--ready');
     expect(renderSnapshot(snapshot({ sidecarHealthy: false })).statusClass).toBe(
+      'e4u-status--error',
+    );
+    expect(renderSnapshot(snapshot({ providerAvailable: false })).statusClass).toBe(
       'e4u-status--error',
     );
     expect(

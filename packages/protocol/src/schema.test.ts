@@ -16,6 +16,7 @@ import {
   Methods,
   PingResponseSchema,
   RootIndexStatusSchema,
+  StatusRowAnnotationSchema,
   ToolCallEventSchema,
   ToolReviewSchema,
   TerminalEventSchema,
@@ -175,8 +176,41 @@ describe('annotation schemas (context-snippet + code-suggestion seams)', () => {
     ).toThrow();
   });
 
+  const statusRow = {
+    kind: 'status-row' as const,
+    statusId: 'phase-implement',
+    label: 'Implement',
+    state: 'active' as const,
+    phase: 'implement' as const,
+  };
+
+  it('accepts a well-formed status-row annotation via the union', () => {
+    const parsed = AnnotationSchema.parse(statusRow);
+    expect(parsed.kind).toBe('status-row');
+    expect(StatusRowAnnotationSchema.parse(statusRow).state).toBe('active');
+  });
+
+  it('treats phase and detail as optional (non-phase rows omit phase)', () => {
+    const indexing = {
+      kind: 'status-row' as const,
+      statusId: 'indexing',
+      label: 'Indexing',
+      state: 'active' as const,
+      detail: 'Indexing 4,238 / 21,500 files…',
+    };
+    const parsed = StatusRowAnnotationSchema.parse(indexing);
+    expect(parsed.phase).toBeUndefined();
+    expect(parsed.detail).toBe('Indexing 4,238 / 21,500 files…');
+  });
+
+  it('rejects an unknown status-row state, an unknown phase, and an empty statusId', () => {
+    expect(() => StatusRowAnnotationSchema.parse({ ...statusRow, state: 'queued' })).toThrow();
+    expect(() => StatusRowAnnotationSchema.parse({ ...statusRow, phase: 'done' })).toThrow();
+    expect(() => StatusRowAnnotationSchema.parse({ ...statusRow, statusId: '' })).toThrow();
+  });
+
   it('rejects an unknown annotation kind', () => {
-    expect(() => AnnotationSchema.parse({ ...snippet, kind: 'status-row' })).toThrow();
+    expect(() => AnnotationSchema.parse({ ...snippet, kind: 'bogus-kind' })).toThrow();
   });
 });
 

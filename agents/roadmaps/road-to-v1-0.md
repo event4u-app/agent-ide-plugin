@@ -277,6 +277,28 @@ complexity: heavy
 > diff-accept (T-1001/T-1002)** — the editor render + per-suggestion stage/apply
 > affordance stay IDE-deferred, so no checkbox flips. The third forward-pointed
 > member (`status-row` progress strings) is deferred to its own slice.
+>
+> **Annotations contract — third (final forward-pointed) member landed
+> (2026-06-01).** The `Message.annotations` union gained its **`status-row`**
+> member: the SweepAI "progress strings are first-class stream items" surface —
+> one row per long-operation step (an agent pipeline phase, or a non-phase op
+> such as background indexing) with a `pending|active|done|error` lifecycle.
+> Pure-core only — `packages/protocol/src/schema.ts` (`StatusRowAnnotation` +
+> flat-enum `StatusRowState` + optional `StatusRowPhase`, codegen'd to a Kotlin
+> sealed-union variant) + `packages/core/src/agent/status-rows.ts`
+> (`buildStatusRows` generic descriptor builder, `statusRowsForMode` convenience
+> over `DirectiveSet.phases`, pure `transitionStatusRow` reducer owning the
+> lifecycle invariant; no-op on invalid/terminal edges). 19 new core tests + 3
+> protocol tests, core 878 pass/1 skip, `task ci`-equivalent + `jetbrains:check`
+> green. ADR-021. AI council (codex-cli + gemini-cli) UNANIMOUS A1/C1/D1/E1/F1,
+> split B (codex B1 phase-bound / gemini B2 generic) resolved to a synthesis —
+> generic builder + mode-aware wrapper + optional `phase`, which addresses the
+> reconciliation/indexing trap both reviewers flagged. This pre-builds the data
+> layer for the **C-9 status surface** and **T-1304 index statusbar** — the
+> progress-bar/spinner render + live AgentDriver phase-boundary streaming stay
+> IDE-deferred, so no checkbox flips. The `Message.annotations` contract now
+> carries all three forward-pointed members (context-snippet · code-suggestion ·
+> status-row).
 
 ---
 

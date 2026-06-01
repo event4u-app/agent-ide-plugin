@@ -73,11 +73,12 @@ export function bootstrap(globals: { document: Document; window: Window; vscode:
         'e4u-mode-pill--streaming',
         'e4u-mode-pill--error',
       );
-      const cls = !snapshot.sidecarHealthy
-        ? 'e4u-mode-pill--error'
-        : snapshot.streamingSummary !== null
-          ? 'e4u-mode-pill--streaming'
-          : 'e4u-mode-pill--ready';
+      const cls =
+        !snapshot.sidecarHealthy || !snapshot.providerAvailable
+          ? 'e4u-mode-pill--error'
+          : snapshot.streamingSummary !== null
+            ? 'e4u-mode-pill--streaming'
+            : 'e4u-mode-pill--ready';
       modePill.classList.add(cls);
     }
     if (modeLabel) {

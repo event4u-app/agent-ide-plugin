@@ -34,6 +34,7 @@ export function buildChatHtml(opts: {
     modelId: opts.modelId ?? 'claude-sonnet-4-6',
     models: DEFAULT_MODELS,
     sidecarHealthy: snapshot.sidecarHealthy,
+    providerAvailable: snapshot.providerAvailable,
     streaming: snapshot.streamingSummary !== null,
   });
   return `<!doctype html>

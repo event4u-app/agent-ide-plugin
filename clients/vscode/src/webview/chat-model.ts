@@ -68,4 +68,11 @@ export interface ChatModelSnapshot {
   mode: ConversationMode;
   streamingSummary: StreamingSummary | null;
   sidecarHealthy: boolean;
+  /**
+   * Whether the active provider can actually serve a turn — CLI mode: the
+   * `claude` binary is on PATH; API mode: a key is configured. Drives the
+   * mode-pill status dot (green = available, red = unavailable). Probed by the
+   * host on open and on every mode switch.
+   */
+  providerAvailable: boolean;
 }
