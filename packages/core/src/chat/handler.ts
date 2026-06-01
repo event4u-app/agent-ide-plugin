@@ -18,6 +18,7 @@ import { LlmStreamError } from '../llm/backend.js';
 import { CancellationToken } from '../llm/cancellation.js';
 import type { PricingBook } from '../pricing/loader.js';
 import type { ConversationStore } from './store.js';
+import { resolveSystemPrompt, type LoadGuidelines } from './system-prompt.js';
 
 /**
  * T-VS03 / T-VS04 — chat-RPC handler (pure core).
@@ -78,6 +79,15 @@ export interface ChatHandlerDeps {
    * response. Absent → no estimate-budget behaviour (backward-compatible).
    */
   budget?: BudgetRecorder;
+  /**
+   * Optional workspace-guidelines loader (T-1307, AI council 2026-06-01,
+   * UNANIMOUS A2/C2/D1/E1/F1). When set, the handler folds the current
+   * guidelines into the turn's `system` prompt (composed FRESH per turn so an
+   * edit to `guidelines.md` between turns takes effect). Fail-open: a loader
+   * error degrades to no guidelines, never breaks the turn. Absent → no system
+   * prompt (backward-compatible).
+   */
+  loadGuidelines?: LoadGuidelines;
   /** Output cap for the turn. Default 2048 (matches the `LlmRequest` default). */
   maxTokens?: number;
 }
@@ -121,10 +131,17 @@ export class ChatHandler {
       }));
       const backend = this.deps.resolveBackend(req.providerId);
       const model = this.deps.resolveModel(req.providerId);
+      // Fold workspace guidelines into the system prompt BEFORE building the
+      // request, so the pre-send estimate below counts the guidelines exactly
+      // once (council trap: estimate must not undercount the system block).
+      const system = this.deps.loadGuidelines
+        ? await resolveSystemPrompt(undefined, this.deps.loadGuidelines)
+        : undefined;
       const request: LlmRequest = {
         model,
         messages,
         max_tokens: this.deps.maxTokens ?? 2048,
+        ...(system ? { system } : {}),
       };
 
       // Pre-send estimate (B1): emit BEFORE the first token so the composer can

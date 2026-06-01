@@ -5,6 +5,7 @@ import { ChatHandler } from './chat/handler.js';
 import { FileConversationStore, type ConversationStore } from './chat/store.js';
 import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
+import { FileGuidelinesStore, type GuidelinesStore } from './guidelines/guidelines.js';
 import { GitHandler } from './git/handler.js';
 import { ProviderRegistry } from './llm/provider-registry.js';
 import { PermissionGate } from './permissions/gate.js';
@@ -45,6 +46,13 @@ export interface BuildCoreOptions {
   cost?: { dailyBudgetUsd?: number | null; warningThresholdRatio?: number };
   /** Budget recorder override (tests). Takes precedence over `cost`. */
   budget?: BudgetRecorder;
+  /**
+   * Workspace-guidelines store override (tests). Defaults to a
+   * {@link FileGuidelinesStore} at `<cwd>/.event4u-agent` (reads
+   * `guidelines.md`). Both turn handlers fold its content into the per-turn
+   * system prompt (T-1307).
+   */
+  guidelines?: GuidelinesStore;
 }
 
 export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher {
@@ -52,6 +60,8 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   const cwd = options.cwd ?? process.cwd();
   const registry = options.registry ?? new ProviderRegistry({ env });
   const store = options.store ?? new FileConversationStore(join(cwd, PLUGIN_STATE_DIR, 'chats'));
+  const guidelines = options.guidelines ?? new FileGuidelinesStore(join(cwd, PLUGIN_STATE_DIR));
+  const loadGuidelines = () => guidelines.load();
 
   const budget =
     options.budget ??
@@ -68,6 +78,7 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     resolveModel: (providerId) => registry.resolveModel(providerId),
     store,
     pricing: options.pricing,
+    loadGuidelines,
     ...(budget ? { budget } : {}),
   });
 
@@ -93,6 +104,7 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     registry: buildDefaultToolRegistry({ workspaceRoot: cwd }),
     decide: () => Promise.resolve('deny'),
     pricing: options.pricing,
+    loadGuidelines,
     ...(budget ? { budget } : {}),
   });
 
