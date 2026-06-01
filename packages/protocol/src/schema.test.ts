@@ -17,6 +17,9 @@ import {
   EchoRequestSchema,
   EchoResponseSchema,
   EnvelopeSchema,
+  GitReviewApplyFixRequestSchema,
+  GitReviewApplyFixResponseSchema,
+  GitReviewFindingSchema,
   MethodNameSchema,
   Methods,
   OnboardingDetectResponseSchema,
@@ -335,6 +338,7 @@ describe('method registry', () => {
       'echo',
       'gitCommitMessage',
       'gitPrDescription',
+      'gitReviewApplyFix',
       'gitReviewSummary',
       'onboardingDetect',
       'ping',
@@ -583,5 +587,76 @@ describe('chat cost & budget wire schemas (T-PRD06)', () => {
       },
     });
     expect(withBudget.budget?.remainingUsd).toBe(9);
+  });
+});
+
+describe('gitReviewApplyFix schemas (T-CR-404)', () => {
+  it('a review finding carries the optional fix anchors + a required fixable flag', () => {
+    const fixable = GitReviewFindingSchema.parse({
+      file: 'src/foo.ts',
+      line: 2,
+      severity: 'high',
+      category: 'bug',
+      description: 'off-by-one',
+      quotedSpan: 'i <= n',
+      proposedFix: 'i < n',
+      fixable: true,
+    });
+    expect(fixable.fixable).toBe(true);
+    expect(fixable.proposedFix).toBe('i < n');
+
+    // quotedSpan/proposedFix are optional; fixable is required.
+    const bare = GitReviewFindingSchema.parse({
+      file: 'src/foo.ts',
+      line: null,
+      severity: 'low',
+      category: 'style',
+      description: 'no fix proposed',
+      fixable: false,
+    });
+    expect(bare.quotedSpan).toBeUndefined();
+    expect(() =>
+      GitReviewFindingSchema.parse({
+        file: 'src/foo.ts',
+        line: null,
+        severity: 'low',
+        category: 'style',
+        description: 'missing fixable',
+      }),
+    ).toThrow();
+  });
+
+  it('the request requires a non-empty span; the response carries a diff review or a reason', () => {
+    const req = GitReviewApplyFixRequestSchema.parse({
+      cwd: '/repo',
+      file: 'src/foo.ts',
+      quotedSpan: 'i <= n',
+      proposedFix: 'i < n',
+    });
+    expect(req.file).toBe('src/foo.ts');
+    expect(() =>
+      GitReviewApplyFixRequestSchema.parse({
+        cwd: '/repo',
+        file: 'src/foo.ts',
+        quotedSpan: '',
+        proposedFix: 'x',
+      }),
+    ).toThrow();
+
+    const applied = GitReviewApplyFixResponseSchema.parse({
+      applicable: true,
+      review: {
+        kind: 'diff',
+        files: [{ path: 'src/foo.ts', diff: '@@ -1 +1 @@', isNewFile: false }],
+      },
+    });
+    expect(applied.review?.files[0]?.path).toBe('src/foo.ts');
+
+    const notApplicable = GitReviewApplyFixResponseSchema.parse({
+      applicable: false,
+      reason: 'span_drift',
+    });
+    expect(notApplicable.review).toBeUndefined();
+    expect(notApplicable.reason).toBe('span_drift');
   });
 });

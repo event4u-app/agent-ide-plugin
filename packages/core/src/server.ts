@@ -13,6 +13,8 @@ import {
   GitCommitMessageRequestSchema,
   type GitPrDescriptionResponse,
   GitPrDescriptionRequestSchema,
+  type GitReviewApplyFixResponse,
+  GitReviewApplyFixRequestSchema,
   type GitReviewSummaryResponse,
   GitReviewSummaryRequestSchema,
   type OnboardingDetectResponse,
@@ -99,6 +101,8 @@ export class Dispatcher {
         this.requireGit().prDescription(GitPrDescriptionRequestSchema.parse(data ?? {})),
       gitReviewSummary: (data: unknown): Promise<GitReviewSummaryResponse> =>
         this.requireGit().reviewSummary(GitReviewSummaryRequestSchema.parse(data ?? {})),
+      gitReviewApplyFix: (data: unknown): Promise<GitReviewApplyFixResponse> =>
+        this.requireGit().reviewApplyFix(GitReviewApplyFixRequestSchema.parse(data ?? {})),
       // Live terminal: input + resize are plain request/response (T-PRD03);
       // `terminalSubscribe` is streaming and handled in `dispatch` below.
       terminalInput: (data: unknown): TerminalInputResponse =>

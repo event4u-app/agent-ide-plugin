@@ -425,13 +425,16 @@ const classes: DataClass[] = [
   },
   {
     name: 'GitReviewFinding',
-    doc: 'Minimal wire view of one review finding (no votes/confidence leak).',
+    doc: 'Wire view of one review finding; quotedSpan/proposedFix feed apply-fix (T-CR-404).',
     fields: [
       { name: 'file', kotlinType: 'String' },
       { name: 'line', kotlinType: 'Int?', default: 'null' },
       { name: 'severity', kotlinType: 'String' },
       { name: 'category', kotlinType: 'String' },
       { name: 'description', kotlinType: 'String' },
+      { name: 'fixable', kotlinType: 'Boolean' },
+      { name: 'quotedSpan', kotlinType: 'String?', default: 'null' },
+      { name: 'proposedFix', kotlinType: 'String?', default: 'null' },
     ],
   },
   {
@@ -456,6 +459,25 @@ const classes: DataClass[] = [
       { name: 'totalFindings', kotlinType: 'Int' },
       { name: 'potentialFindings', kotlinType: 'Int' },
       { name: 'topFindings', kotlinType: 'List<GitReviewFinding>', default: 'emptyList()' },
+    ],
+  },
+  {
+    name: 'GitReviewApplyFixRequest',
+    doc: 'gitReviewApplyFix request — echo a finding fix; Core re-reads + revalidates the span.',
+    fields: [
+      { name: 'cwd', kotlinType: 'String' },
+      { name: 'file', kotlinType: 'String' },
+      { name: 'quotedSpan', kotlinType: 'String' },
+      { name: 'proposedFix', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'GitReviewApplyFixResponse',
+    doc: 'Apply-fix result — the approval diff, or applicable:false + reason on no-op/drift.',
+    fields: [
+      { name: 'applicable', kotlinType: 'Boolean' },
+      { name: 'review', kotlinType: 'ToolReview?', default: 'null' },
+      { name: 'reason', kotlinType: 'String?', default: 'null' },
     ],
   },
 ];
