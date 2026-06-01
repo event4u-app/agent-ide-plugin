@@ -117,6 +117,10 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     decide: () => Promise.resolve('deny'),
     pricing: options.pricing,
     loadGuidelines,
+    // Scoped-context retrieval (T-MR13): same shared-coordinator callback as the
+    // chat handler — the agent turn that EDITS files benefits most from grounding.
+    retrieveContext: (query, scope, signal) =>
+      coordinator.retrieveContextSnippets(query, CONTEXT_TOP_K, scope, signal),
     ...(budget ? { budget } : {}),
   });
 

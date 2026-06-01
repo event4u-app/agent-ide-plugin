@@ -6,15 +6,19 @@ import type {
   ChatMessage,
   ChatUsage,
   ContentPart,
+  ContextScope,
+  ContextSnippetAnnotation,
   Envelope,
   LlmMode,
   LlmRequest,
   LlmUsage,
   ToolCallEvent,
 } from '@event4u-agent/protocol';
+import { buildContextInjection } from '../chat/context-injection.js';
 import type { EnvelopeSink } from '../chat/handler.js';
 import type { ConversationStore } from '../chat/store.js';
 import { resolveSystemPrompt, type LoadGuidelines } from '../chat/system-prompt.js';
+import { isAbortError } from '../abort.js';
 import type { BudgetRecorder, BudgetStatus } from '../cost/budget.js';
 import type { LlmBackend } from '../llm/backend.js';
 import { LlmStreamError } from '../llm/backend.js';
@@ -106,6 +110,26 @@ export interface AgentTurnHandlerDeps {
    * fail-open (a loader error degrades to the base `system`).
    */
   loadGuidelines?: LoadGuidelines;
+  /**
+   * Optional scoped-context retriever (T-MR13, AI council 2026-06-01 + 2026-06-02,
+   * UNANIMOUS A1/B1/C1/D1/E1). Mirrors `ChatHandlerDeps.retrieveContext`. When
+   * set, the handler retrieves the top-k context snippets for the turn's
+   * {@link ContextScope} ONCE (before the loop — fork B1, query = the user
+   * message), folds them into the per-iteration system prompt (fork A1:
+   * guidelines ahead of the static `system` ahead of the `<workspace-context>`
+   * block), and surfaces them on the response (fork C1). The callback resolves
+   * the scope against the live enabled roots itself (the WorkspaceCoordinator
+   * owns that set). Absent → no retrieval (backward-compatible). The snippets
+   * reflect PRE-edit file state; the loop's `tool_result` history is the
+   * authoritative post-edit state (council stale-context trap — mitigated by
+   * the iteration cap + tool results sitting later in the message history than
+   * the system prompt).
+   */
+  retrieveContext?: (
+    query: string,
+    scope: ContextScope,
+    signal: AbortSignal,
+  ) => Promise<ContextSnippetAnnotation[]>;
 }
 
 /** One LLM iteration's collected output. */
@@ -171,12 +195,19 @@ export class AgentTurnHandler {
       const toolDefs = this.deps.registry.definitions();
       const maxIterations = req.maxIterations ?? this.deps.maxIterations ?? DEFAULT_MAX_ITERATIONS;
       const maxTokens = this.deps.maxTokens ?? DEFAULT_MAX_TOKENS;
-      // Compose the system prompt ONCE per turn (council trap: loading per
-      // iteration could shift instructions mid-loop). Folds workspace
-      // guidelines ahead of the static base `system`; fail-open to the base.
+      // Retrieve the scoped context ONCE per turn (fork B1: re-retrieving per
+      // iteration would shift the grounding mid-loop and burn latency), then
+      // compose the system prompt ONCE (council trap: composing per iteration
+      // could shift instructions mid-loop). Layer order is guidelines ahead of
+      // the static `system` ahead of the `<workspace-context>` block (fork A1):
+      // `resolveSystemPrompt` prepends guidelines ahead of a base that is the
+      // static `system` joined with the context block. Fail-open throughout.
+      const annotations = await this.retrieveContext(req, token.signal);
+      const injection = buildContextInjection(annotations);
+      const base = composeAgentBase(this.deps.system, injection.system);
       const system = this.deps.loadGuidelines
-        ? await resolveSystemPrompt(this.deps.system, this.deps.loadGuidelines)
-        : this.deps.system;
+        ? await resolveSystemPrompt(base, this.deps.loadGuidelines)
+        : base;
 
       const aggUsage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
       const changedFiles: string[] = [];
@@ -262,10 +293,39 @@ export class AgentTurnHandler {
         cancelled: token.isCancelled,
         stopReason,
         ...(budget ? { budget } : {}),
+        // EXACTLY the snippets folded into `system` at the start of the loop
+        // (fork C1; council trap: the wire annotations must reflect what the
+        // model saw, not a budget-dropped superset). Omitted when none injected.
+        ...(injection.used.length ? { annotations: injection.used } : {}),
       };
       return { messageId, messageType: 'agentTurn', data: response, done: true };
     } finally {
       this.active.delete(req.conversationId);
+    }
+  }
+
+  /**
+   * Retrieve the scoped context snippets for this turn (fork B1: once, before
+   * the loop). No-op (→ `[]`) unless a `retrieveContext` callback is injected
+   * and the scope is not `none` (fork E1: `none` short-circuits before any
+   * retrieval). An omitted scope defaults to `all`. Fail-open (fork D1): a
+   * retrieval error degrades to no context so a flaky index never breaks the
+   * agent turn — but a user-initiated abort is RE-THROWN, never swallowed (the
+   * T-1305 fail-open-must-not-eat-Stop lesson; the `finally` releases the slot).
+   */
+  private async retrieveContext(
+    req: AgentTurnRequest,
+    signal: AbortSignal,
+  ): Promise<ContextSnippetAnnotation[]> {
+    const retrieve = this.deps.retrieveContext;
+    if (!retrieve) return [];
+    const scope: ContextScope = req.scope ?? { kind: 'all' };
+    if (scope.kind === 'none') return [];
+    try {
+      return await retrieve(req.message, scope, signal);
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      return [];
     }
   }
 
@@ -432,6 +492,24 @@ export class AgentTurnHandler {
     });
     return { model, mode, totalUsd: breakdown.total_usd, isEstimate: mode === 'cli' };
   }
+}
+
+/**
+ * Compose the system-prompt base from the static agent instruction and the
+ * retrieved-context block (fork A1: static `system` first, `<workspace-context>`
+ * last). `resolveSystemPrompt` later prepends workspace guidelines ahead of this
+ * base, giving the final guidelines → system → context order. Returns
+ * `undefined` when neither part has content so callers OMIT the `system` key.
+ */
+function composeAgentBase(
+  system: string | undefined,
+  contextBlock: string | undefined,
+): string | undefined {
+  const parts = [system, contextBlock].filter(
+    (part): part is string => part !== undefined && part.trim().length > 0,
+  );
+  if (parts.length === 0) return undefined;
+  return parts.join('\n\n');
 }
 
 /** Build the assistant ChatMessage for the working history. */

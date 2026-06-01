@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type {
   AgentTurnResponse,
+  ContextScope,
+  ContextSnippetAnnotation,
   Envelope,
   LlmRequest,
   LlmStreamEvent,
@@ -295,5 +297,165 @@ describe('AgentTurnHandler — dispatcher wiring', () => {
     expect(terminal.messageType).toBe('error');
     expect((terminal.data as { code: string }).code).toBe('agent_not_configured');
     dispatcher.dispose();
+  });
+});
+
+describe('AgentTurnHandler — scoped context retrieval (T-MR13)', () => {
+  /** A backend that records every request it streams (one per loop iteration). */
+  function capturingBackend(turns: LlmStreamEvent[][]): {
+    backend: LlmBackend;
+    requests: LlmRequest[];
+  } {
+    const requests: LlmRequest[] = [];
+    let i = 0;
+    const backend: LlmBackend = {
+      id: 'capture',
+      mode: 'api',
+      async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
+        requests.push(request);
+        const events = turns[Math.min(i, turns.length - 1)] ?? [];
+        i += 1;
+        for (const event of events) yield event;
+      },
+    };
+    return { backend, requests };
+  }
+
+  const textTurn: LlmStreamEvent[][] = [
+    [
+      { kind: 'text_delta', text: 'ok' },
+      { kind: 'stop', reason: 'end_turn', usage: USAGE },
+    ],
+  ];
+
+  const snippet = (filePath: string): ContextSnippetAnnotation => ({
+    kind: 'context-snippet',
+    rootId: 'A',
+    filePath,
+    startLine: 1,
+    endLine: 3,
+    relevance: 1,
+    category: 'source',
+    preview: `// ${filePath}\nconst x = 1;`,
+  });
+
+  function handlerWith(
+    backend: LlmBackend,
+    retrieveContext: AgentTurnHandlerDeps['retrieveContext'],
+    extra: Partial<AgentTurnHandlerDeps> = {},
+  ): AgentTurnHandler {
+    return new AgentTurnHandler(
+      baseDeps({
+        registry: new MapToolRegistry([]),
+        resolveBackend: () => backend,
+        ...(retrieveContext ? { retrieveContext } : {}),
+        ...extra,
+      }),
+    );
+  }
+
+  async function run(handler: AgentTurnHandler, req: { scope?: ContextScope }): Promise<Envelope> {
+    return handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'how does auth work?', ...req },
+      () => {},
+    );
+  }
+
+  it('folds snippets into the system prompt (after the static base) and surfaces them', async () => {
+    const { backend, requests } = capturingBackend(textTurn);
+    const calls: { query: string; scope: ContextScope }[] = [];
+    const handler = handlerWith(
+      backend,
+      async (query, scope) => {
+        calls.push({ query, scope });
+        return [snippet('src/a.ts'), snippet('src/b.ts')];
+      },
+      { system: 'You are an editing agent.' },
+    );
+
+    const terminal = await run(handler, {});
+
+    // Retriever saw the user message and the default `all` scope (fork B1 + E-default).
+    expect(calls).toEqual([{ query: 'how does auth work?', scope: { kind: 'all' } }]);
+    // Layer order A1: the static system precedes the <workspace-context> block.
+    const system = requests[0]?.system ?? '';
+    expect(system).toContain('You are an editing agent.');
+    expect(system).toContain('<workspace-context>');
+    expect(system).toContain('// src/a.ts:1-3');
+    expect(system.indexOf('You are an editing agent.')).toBeLessThan(
+      system.indexOf('<workspace-context>'),
+    );
+    // The response carries EXACTLY the injected snippets (fork C1).
+    const res = terminal.data as AgentTurnResponse;
+    expect(res.annotations?.map((a) => a.filePath)).toEqual(['src/a.ts', 'src/b.ts']);
+  });
+
+  it('retrieves ONCE and reuses the same context block across every iteration (B1)', async () => {
+    // Iteration 1 issues an (unknown) tool call → is_error fed back → iteration 2
+    // is the final text turn. Both requests must carry the same context block.
+    const { backend, requests } = capturingBackend(writeThenDone({ files: [] }));
+    let retrievals = 0;
+    const handler = handlerWith(backend, async () => {
+      retrievals += 1;
+      return [snippet('src/a.ts')];
+    });
+
+    await run(handler, {});
+
+    expect(retrievals).toBe(1);
+    expect(requests.length).toBe(2);
+    for (const request of requests) {
+      expect(request.system).toContain('<workspace-context>');
+      expect(request.system).toContain('// src/a.ts:1-3');
+    }
+  });
+
+  it('short-circuits scope `none` — no retrieval, no annotations, no context block', async () => {
+    const { backend, requests } = capturingBackend(textTurn);
+    let called = false;
+    const handler = handlerWith(backend, async () => {
+      called = true;
+      return [snippet('x.ts')];
+    });
+
+    const terminal = await run(handler, { scope: { kind: 'none' } });
+
+    expect(called).toBe(false);
+    expect(requests[0]?.system).toBeUndefined();
+    expect((terminal.data as AgentTurnResponse).annotations).toBeUndefined();
+  });
+
+  it('is a no-op when no retriever is wired (existing agent-turn path unchanged)', async () => {
+    const { backend, requests } = capturingBackend(textTurn);
+    const handler = handlerWith(backend, undefined);
+
+    const terminal = await run(handler, {});
+
+    expect(requests[0]?.system).toBeUndefined();
+    expect((terminal.data as AgentTurnResponse).annotations).toBeUndefined();
+  });
+
+  it('fail-open: a retrieval error degrades to no context, the turn still completes', async () => {
+    const { backend, requests } = capturingBackend(textTurn);
+    const handler = handlerWith(backend, async () => {
+      throw new Error('index exploded');
+    });
+
+    const terminal = await run(handler, {});
+
+    expect(requests[0]?.system).toBeUndefined();
+    expect((terminal.data as AgentTurnResponse).text).toBe('ok');
+    expect((terminal.data as AgentTurnResponse).annotations).toBeUndefined();
+  });
+
+  it('re-throws an abort from retrieval (Stop must not be swallowed) and releases the slot', async () => {
+    const { backend } = capturingBackend(textTurn);
+    const handler = handlerWith(backend, async () => {
+      throw new DOMException('aborted', 'AbortError');
+    });
+
+    await expect(run(handler, {})).rejects.toThrow('aborted');
+    expect(handler.isActive('c1')).toBe(false);
   });
 });

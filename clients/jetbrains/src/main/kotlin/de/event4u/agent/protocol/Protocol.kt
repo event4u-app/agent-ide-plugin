@@ -247,6 +247,7 @@ data class AgentTurnRequest(
     val message: String,
     val providerId: String? = null,
     val maxIterations: Int? = null,
+    val scope: ContextScope? = null,
 )
 
 /** Data of a done:false envelope carrying one tool-call lifecycle event. */
@@ -267,6 +268,7 @@ data class AgentTurnResponse(
     val cancelled: Boolean,
     val stopReason: String,
     val budget: ChatBudgetStatus? = null,
+    val annotations: List<ContextSnippetAnnotation>? = null,
 )
 
 /** One file in a multi-file diff the user reviews before it is written. */
