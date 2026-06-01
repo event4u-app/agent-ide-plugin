@@ -283,6 +283,8 @@ const classes: DataClass[] = [
       { name: 'message', kotlinType: 'String' },
       { name: 'providerId', kotlinType: 'String?', default: 'null' },
       { name: 'maxIterations', kotlinType: 'Int?', default: 'null' },
+      // T-MR13 — per-turn retrieval scope, honoured by the agent turn.
+      { name: 'scope', kotlinType: 'ContextScope?', default: 'null' },
     ],
   },
   {
@@ -303,6 +305,8 @@ const classes: DataClass[] = [
       { name: 'cancelled', kotlinType: 'Boolean' },
       { name: 'stopReason', kotlinType: 'String' },
       { name: 'budget', kotlinType: 'ChatBudgetStatus?', default: 'null' },
+      // T-MR13 — context snippets folded into the turn (SnippetBadge render).
+      { name: 'annotations', kotlinType: 'List<ContextSnippetAnnotation>?', default: 'null' },
     ],
   },
 

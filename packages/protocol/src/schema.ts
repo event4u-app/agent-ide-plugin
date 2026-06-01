@@ -687,6 +687,14 @@ export const AgentTurnRequestSchema = z.object({
   providerId: z.string().min(1).optional(),
   /** Upper bound on LLM↔tool iterations; omitted = the Core default (10). */
   maxIterations: z.number().int().positive().optional(),
+  /**
+   * Per-turn retrieval scope; omitted = default (`all`). Honoured by the agent
+   * turn (T-MR13) exactly like {@link ChatSendRequestSchema}: the resolved scope
+   * drives which indexed roots the Context Engine retrieves from, and the
+   * snippets are folded ONCE into the turn's system prompt (ahead of the loop)
+   * + surfaced on {@link AgentTurnResponseSchema}. `none` short-circuits.
+   */
+  scope: ContextScopeSchema.optional(),
 });
 export type AgentTurnRequest = z.infer<typeof AgentTurnRequestSchema>;
 
@@ -718,6 +726,16 @@ export const AgentTurnResponseSchema = z.object({
   stopReason: z.string(),
   /** Daily-budget status after this turn's spend, when a recorder is configured. */
   budget: ChatBudgetStatusSchema.optional(),
+  /**
+   * Context-snippet annotations for the snippets the Context Engine retrieved
+   * for this turn and folded ONCE into the model's system prompt (T-MR13),
+   * mirroring {@link ChatSendResponseSchema}. EXACTLY the snippets the model
+   * saw at the start of the loop — the IDE renders them as SnippetBadges. NOTE:
+   * these reflect PRE-edit file state; the loop's `tool_result` history carries
+   * the authoritative post-edit state. Absent / empty when no retriever is
+   * wired, the scope is `none`, or the index yielded nothing. Turn-local.
+   */
+  annotations: z.array(ContextSnippetAnnotationSchema).optional(),
 });
 export type AgentTurnResponse = z.infer<typeof AgentTurnResponseSchema>;
 
