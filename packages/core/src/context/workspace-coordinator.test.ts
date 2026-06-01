@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { WorkspaceFolder } from '@event4u-agent/protocol';
+import type { ContextSnippetAnnotation, WorkspaceFolder } from '@event4u-agent/protocol';
 import type { RootRegistry } from './roots.js';
 import {
   WorkspaceCoordinator,
@@ -11,6 +11,8 @@ import {
 class FakeEngine implements IndexTarget {
   readonly indexed = new Map<string, Set<string>>();
   readonly removed: string[] = [];
+  /** Recorded `retrieveContextSnippets` calls, so the scope-resolution is testable. */
+  readonly retrieveCalls: { query: string; k: number; rootIds?: string[] }[] = [];
 
   async indexFile(filePath: string, _content: string, rootId: string): Promise<void> {
     const set = this.indexed.get(rootId) ?? new Set<string>();
@@ -25,6 +27,25 @@ class FakeEngine implements IndexTarget {
 
   symbolCountForRoot(rootId: string): number {
     return this.indexed.get(rootId)?.size ?? 0;
+  }
+
+  async retrieveContextSnippets(
+    query: string,
+    k: number,
+    opts: { rootIds?: string[] },
+  ): Promise<ContextSnippetAnnotation[]> {
+    this.retrieveCalls.push({ query, k, rootIds: opts.rootIds });
+    // One synthetic snippet per resolved root so a caller can see the scoping.
+    return (opts.rootIds ?? ['__all__']).map((rootId) => ({
+      kind: 'context-snippet' as const,
+      rootId,
+      filePath: `${rootId}/hit.ts`,
+      startLine: 1,
+      endLine: 2,
+      relevance: 1,
+      category: 'source' as const,
+      preview: 'export const x = 1;',
+    }));
   }
 }
 
@@ -144,5 +165,55 @@ describe('WorkspaceCoordinator — workspaceFoldersChanged deltas', () => {
     expect(engine.removed).toContain('A');
     expect(engine.symbolCountForRoot('A')).toBe(0); // never indexed
     expect(engine.symbolCountForRoot('B')).toBe(1); // B survived
+  });
+});
+
+describe('WorkspaceCoordinator — scoped retrieval (T-MR13)', () => {
+  it('scope `all` retrieves from every segment (rootIds undefined)', async () => {
+    const { coord, engine } = makeCoordinator({ A: ['a.ts'], B: ['b.ts'] });
+    await coord.connect([folder('A'), folder('B')]);
+    await coord.whenIdle();
+
+    const snippets = await coord.retrieveContextSnippets('query', 8, { kind: 'all' });
+
+    expect(engine.retrieveCalls).toHaveLength(1);
+    expect(engine.retrieveCalls[0]?.rootIds).toBeUndefined();
+    expect(snippets.map((s) => s.rootId)).toEqual(['__all__']);
+  });
+
+  it('scope `none` resolves to an empty root set (engine short-circuits)', async () => {
+    const { coord, engine } = makeCoordinator({ A: ['a.ts'] });
+    await coord.connect([folder('A')]);
+    await coord.whenIdle();
+
+    await coord.retrieveContextSnippets('query', 8, { kind: 'none' });
+
+    expect(engine.retrieveCalls[0]?.rootIds).toEqual([]);
+  });
+
+  it('scope `roots` filters to currently-enabled roots, dropping stale ids', async () => {
+    const { coord, engine } = makeCoordinator({ A: ['a.ts'], B: ['b.ts'] });
+    await coord.connect([folder('A'), folder('B')]);
+    await coord.whenIdle();
+
+    // 'GONE' is not a registered root → dropped; 'B' survives.
+    const snippets = await coord.retrieveContextSnippets('query', 8, {
+      kind: 'roots',
+      rootIds: ['B', 'GONE'],
+    });
+
+    expect(engine.retrieveCalls[0]?.rootIds).toEqual(['B']);
+    expect(snippets.map((s) => s.rootId)).toEqual(['B']);
+  });
+
+  it('scope `roots` that filters to empty does NOT widen to all', async () => {
+    const { coord, engine } = makeCoordinator({ A: ['a.ts'] });
+    await coord.connect([folder('A')]);
+    await coord.whenIdle();
+
+    await coord.retrieveContextSnippets('query', 8, { kind: 'roots', rootIds: ['GONE'] });
+
+    // Filtered to [] — NOT undefined ("all") — so no code context leaks in.
+    expect(engine.retrieveCalls[0]?.rootIds).toEqual([]);
   });
 });
