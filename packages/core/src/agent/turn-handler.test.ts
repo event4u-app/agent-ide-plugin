@@ -618,3 +618,103 @@ describe('AgentTurnHandler — code-suggestion annotations', () => {
     expect((terminal.data as AgentTurnResponse).annotations).toBeUndefined();
   });
 });
+
+describe('AgentTurnHandler — agent-mode gating (T-PRD08)', () => {
+  /** A backend that records the tool names advertised on its first stream call. */
+  function recordingBackend(advertised: string[]): LlmBackend {
+    return {
+      id: 'fake',
+      mode: 'api',
+      async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
+        for (const def of request.tools ?? []) advertised.push(def.name);
+        yield { kind: 'stop', reason: 'end_turn', usage: USAGE };
+      },
+    };
+  }
+
+  it('does NOT advertise write_files in a read-only mode (ask), but lists the read tools', async () => {
+    const root = await tempWorkspace();
+    const advertised: string[] = [];
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry: buildDefaultToolRegistry({ workspaceRoot: root }),
+        resolveBackend: () => recordingBackend(advertised),
+      }),
+    );
+    await handler.handleTurn('m1', { conversationId: 'c1', message: 'hi', mode: 'ask' }, () => {});
+
+    expect(advertised).not.toContain('write_files');
+    expect(advertised).toEqual(expect.arrayContaining(['read_file', 'list_dir', 'glob', 'grep']));
+  });
+
+  it('DOES advertise write_files in edit mode (and when mode is omitted = default edit)', async () => {
+    const root = await tempWorkspace();
+    const adWithMode: string[] = [];
+    const adDefault: string[] = [];
+    await new AgentTurnHandler(
+      baseDeps({
+        registry: buildDefaultToolRegistry({ workspaceRoot: root }),
+        resolveBackend: () => recordingBackend(adWithMode),
+      }),
+    ).handleTurn('m1', { conversationId: 'c1', message: 'hi', mode: 'edit' }, () => {});
+    await new AgentTurnHandler(
+      baseDeps({
+        registry: buildDefaultToolRegistry({ workspaceRoot: root }),
+        resolveBackend: () => recordingBackend(adDefault),
+      }),
+    ).handleTurn('m2', { conversationId: 'c2', message: 'hi' }, () => {});
+
+    expect(adWithMode).toContain('write_files');
+    expect(adDefault).toContain('write_files');
+  });
+
+  it('refuses a stale write_files call in a read-only mode and writes nothing (B3 backstop)', async () => {
+    const root = await tempWorkspace();
+    // The model emits a write_files call from prior context even though the
+    // read-only mode never advertised it — the backstop must refuse it.
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry: buildDefaultToolRegistry({ workspaceRoot: root }),
+        resolveBackend: () =>
+          scriptedBackend(
+            writeThenDone({ edits: [{ file: 'note.txt', originalCode: '', newCode: 'hi\n' }] }),
+          ),
+      }),
+    );
+    const { emit, envelopes } = collect();
+
+    const terminal = await handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'create note.txt', mode: 'plan' },
+      emit,
+    );
+    const res = terminal.data as AgentTurnResponse;
+
+    expect(res.changedFiles).toEqual([]);
+    expect(res.mode).toBe('plan');
+    // Never reached approval/exec — only started + error for the refused call.
+    const kinds = toolEvents(envelopes).map((t) => t.kind);
+    expect(kinds).toEqual(['started', 'error']);
+    const err = toolEvents(envelopes).find((t) => t.kind === 'error');
+    expect(err?.kind === 'error' && err.message).toContain("'plan' mode");
+    // No file was written to disk.
+    await expect(readFile(join(root, 'note.txt'), 'utf8')).rejects.toThrow();
+  });
+
+  it('surfaces the resolved mode on the response (ask) and defaults to edit when omitted', async () => {
+    const root = await tempWorkspace();
+    const make = (): AgentTurnHandler =>
+      new AgentTurnHandler(
+        baseDeps({ registry: buildDefaultToolRegistry({ workspaceRoot: root }) }),
+      );
+
+    const ask = (
+      await make().handleTurn('m1', { conversationId: 'c1', message: 'hi', mode: 'ask' }, () => {})
+    ).data as AgentTurnResponse;
+    const def = (await make().handleTurn('m2', { conversationId: 'c2', message: 'hi' }, () => {}))
+      .data as AgentTurnResponse;
+
+    expect(ask.mode).toBe('ask');
+    expect(def.mode).toBe('edit');
+  });
+});

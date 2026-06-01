@@ -56,6 +56,15 @@ export interface PreparedTool {
 export interface RegisteredTool {
   definition: ToolDefinition;
   /**
+   * Whether this tool writes to the workspace. Read tools are `false`; the
+   * `write_files` editor is `true`. The {@link AgentTurnHandler} reads this
+   * (NOT a hard-coded tool name — AI council 2026-06-03 fork C1) to both filter
+   * mutating tools out of the advertised set AND refuse a mutating call at
+   * runtime when the resolved mode is read-only. A future mutating tool (e.g.
+   * `run_shell`) is gated automatically by setting `mutates: true`.
+   */
+  mutates: boolean;
+  /**
    * Parse `input`, compute the optional review payload, and return a thunk that
    * runs the work. May throw on invalid input — the loop turns a throw into an
    * `is_error` tool_result so the model can correct itself.
@@ -63,9 +72,19 @@ export interface RegisteredTool {
   prepare(input: unknown): Promise<PreparedTool>;
 }
 
+/** Filter for {@link ToolRegistry.definitions}. */
+export interface DefinitionsFilter {
+  /** When `false`, mutating tools are excluded; omitted/`true` = all tools. */
+  mutating?: boolean;
+}
+
 export interface ToolRegistry {
-  /** Tool definitions advertised to the model on every iteration. */
-  definitions(): ToolDefinition[];
+  /**
+   * Tool definitions advertised to the model. With `{ mutating: false }` the
+   * mutating tools are omitted (read-only modes — the model never sees an
+   * editor to call); omitted filter = every tool.
+   */
+  definitions(filter?: DefinitionsFilter): ToolDefinition[];
   /** Look up a tool by name; `undefined` for an unknown tool. */
   get(name: string): RegisteredTool | undefined;
 }
@@ -78,8 +97,11 @@ export class MapToolRegistry implements ToolRegistry {
     for (const tool of tools) this.tools.set(tool.definition.name, tool);
   }
 
-  definitions(): ToolDefinition[] {
-    return [...this.tools.values()].map((tool) => tool.definition);
+  definitions(filter?: DefinitionsFilter): ToolDefinition[] {
+    const includeMutating = filter?.mutating ?? true;
+    return [...this.tools.values()]
+      .filter((tool) => includeMutating || !tool.mutates)
+      .map((tool) => tool.definition);
   }
 
   get(name: string): RegisteredTool | undefined {
@@ -117,6 +139,7 @@ export function buildDefaultToolRegistry(opts: BuildToolRegistryOptions): ToolRe
 function readToolEntry<A>(handler: ToolHandler<A, string>): RegisteredTool {
   return {
     definition: handler.definition,
+    mutates: false,
     async prepare(input: unknown): Promise<PreparedTool> {
       const args = handler.args.parse(input);
       return {
@@ -138,6 +161,7 @@ function readToolEntry<A>(handler: ToolHandler<A, string>): RegisteredTool {
 function writeFilesEntry(workspaceRoot: string): RegisteredTool {
   return {
     definition: writeFilesToolDefinition,
+    mutates: true,
     async prepare(input: unknown): Promise<PreparedTool> {
       const args = WriteFilesArgsSchema.parse(input);
       const tool = new WriteFilesTool(workspaceRoot);

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { AgentModeSchema, type AgentMode } from '@event4u-agent/protocol';
 import { type AgentPhase } from './loop.js';
 
 /**
@@ -17,8 +17,10 @@ import { type AgentPhase } from './loop.js';
  * appends the terminal `done` itself, so no directive lists it.
  */
 
-export const AgentModeSchema = z.enum(['ask', 'edit', 'plan', 'review', 'commit', 'explain']);
-export type AgentMode = z.infer<typeof AgentModeSchema>;
+// The mode enum is owned by the protocol (the wire single-source-of-truth, AI
+// council 2026-06-03 fork A1); re-exported here so existing importers of the
+// directive vocabulary keep one import site.
+export { AgentModeSchema, type AgentMode };
 
 export interface DirectiveSet {
   mode: AgentMode;
