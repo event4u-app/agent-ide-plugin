@@ -182,6 +182,10 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
       coordinator.retrieveContextSnippets(query, CONTEXT_TOP_K, scope, signal),
     ...(budget ? { budget } : {}),
     step,
+    // Same calibration log as the chat handler (T-706, ADR-037). The agent turn
+    // reconciles only single-iteration turns (council Q0=A) — a multi-iteration
+    // loop is not a fair test of a single-iteration pre-flight estimate.
+    calibration,
   });
 
   // Live-terminal handler (T-PRD03) — the read path over the SAME manager the
