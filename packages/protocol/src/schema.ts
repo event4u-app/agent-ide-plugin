@@ -645,6 +645,71 @@ export const ToolCallEventSchema = z.discriminatedUnion('kind', [
 ]);
 export type ToolCallEvent = z.infer<typeof ToolCallEventSchema>;
 
+// --- agent turn: chat that edits files (product-readiness) ---------------
+
+/**
+ * The agentic chat turn (`agentTurn`) — the seam that lets chat actually run
+ * tools and edit files, as opposed to the provider-direct single turn of
+ * `chatSend`. The Core runs a bounded LLM↔tool loop: stream the model, surface
+ * each tool-call through the {@link ToolCallEventSchema} lifecycle (approval /
+ * diff / result cards), execute approved calls, feed the result back, and loop
+ * until the model stops or `maxIterations` is hit.
+ *
+ * Streaming mirrors `chatSend`: N `done:false` envelopes (each an
+ * {@link AgentToolEvent} or a {@link ChatTokenEvent}) then one terminal
+ * `done:true` carrying an {@link AgentTurnResponse}. The dispatcher owns the
+ * single terminal envelope. Cancellation reuses `chatCancel` keyed by
+ * `conversationId` (one cancel surface per conversation).
+ *
+ * Design ratified by AI council (codex-cli 0.134.0 + gemini 0.41.2,
+ * 2026-06-01, UNANIMOUS forks 1A/2A/3A/4A/5A/6A/7A/8A): a dedicated method +
+ * standalone handler, an injectable tool registry (read + write tools), a
+ * bounded sequential loop, string-only persistence (no store migration), and
+ * denied/blocked tool calls fed back as `is_error` tool results so the model
+ * can recover or explain. The IDE approval round-trip that drives `decide`
+ * stays an IDE-runtime follow-up, exactly like the chat + tool-card seams.
+ */
+export const AgentTurnRequestSchema = z.object({
+  conversationId: z.string().min(1),
+  message: z.string(),
+  /** Provider/backend selector; omitted = the Core's default. */
+  providerId: z.string().min(1).optional(),
+  /** Upper bound on LLM↔tool iterations; omitted = the Core default (10). */
+  maxIterations: z.number().int().positive().optional(),
+});
+export type AgentTurnRequest = z.infer<typeof AgentTurnRequestSchema>;
+
+/**
+ * Data of a `done:false` envelope carrying one tool-call lifecycle event.
+ * Clients tell the three `done:false` shapes apart by key presence
+ * (`token` vs `estimate` vs `toolEvent`).
+ */
+export const AgentToolEventSchema = z.object({
+  toolEvent: ToolCallEventSchema,
+});
+export type AgentToolEvent = z.infer<typeof AgentToolEventSchema>;
+
+/** Data of the terminal `done:true` envelope: the full agent-turn result. */
+export const AgentTurnResponseSchema = z.object({
+  /** Stable id of the persisted assistant message. */
+  messageId: z.string().min(1),
+  /** The model's final assistant text, after all tool calls. */
+  text: z.string(),
+  usage: ChatUsageSchema,
+  cost: ChatCostSchema,
+  /** Workspace-relative paths edited across all iterations, first-seen order. */
+  changedFiles: z.array(z.string()),
+  /** Number of LLM iterations the loop ran. */
+  iterations: z.number().int().nonnegative(),
+  /** `true` when the turn was aborted mid-loop by `chatCancel`. */
+  cancelled: z.boolean(),
+  /** `end_turn` · `max_iterations` · `cancelled` · or the model's stop reason. */
+  stopReason: z.string(),
+  /** Daily-budget status after this turn's spend, when a recorder is configured. */
+  budget: ChatBudgetStatusSchema.optional(),
+});
+export type AgentTurnResponse = z.infer<typeof AgentTurnResponseSchema>;
+
 // --- git loop (product-readiness Phase 4 transport) ---------------------
 
 /**
@@ -800,6 +865,7 @@ export const Methods = {
   terminalResize: { request: TerminalResizeRequestSchema, response: TerminalResizeResponseSchema },
   chatSend: { request: ChatSendRequestSchema, response: ChatSendResponseSchema },
   chatCancel: { request: ChatCancelRequestSchema, response: ChatCancelResponseSchema },
+  agentTurn: { request: AgentTurnRequestSchema, response: AgentTurnResponseSchema },
   gitCommitMessage: {
     request: GitCommitMessageRequestSchema,
     response: GitCommitMessageResponseSchema,

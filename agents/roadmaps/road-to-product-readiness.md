@@ -66,7 +66,7 @@ complexity: heavy
 
 ### Exit gate — Phase 1
 
-- [ ] A multi-step agent turn that runs a command and edits 2+ files renders: approval card → live terminal card → diff review → applied — in both IDEs. Captured in `docs/MANUAL_VERIFICATION.md`.
+- [ ] A multi-step agent turn that runs a command and edits 2+ files renders: approval card → live terminal card → diff review → applied — in both IDEs. Captured in `docs/MANUAL_VERIFICATION.md`. <!-- engine DONE 2026-06-01 (feat/product-readiness-agent-turn, ADR-023): protocol `agentTurn` method + `packages/core/src/agent/turn-handler.ts` `AgentTurnHandler` (bounded LLM↔tool loop) + `agent/tool-registry.ts` (injectable read+write tools, prepare/execute split) wired into `buildCoreDispatcher`. Streams `ChatTokenEvent` + `ToolCallEvent`, executes approved calls via `runToolCallWithApproval`, feeds results (incl. denials) back, maxIterations cap, cancel via `chatCancel`. 14 unit tests, core 903 pass. AI council (codex-cli 0.134.0 + gemini 0.41.2) UNANIMOUS forks 1A/2A/3A/4A/5A/6A/7A/8A. The cards RENDER + the inbound approval round-trip that drives `decide` (default-denies until wired) stay IDE-runtime → exit gate stays `[ ]`. -->
 
 **Baseline (P50):** 2.5 weeks.
 

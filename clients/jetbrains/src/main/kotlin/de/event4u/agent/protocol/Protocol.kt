@@ -239,6 +239,35 @@ data class ChatCancelResponse(
     val cancelled: Boolean,
 )
 
+/** Start an agentic chat turn (LLM + tool loop). maxIterations caps the loop; omitted = Core default. */
+@Serializable
+data class AgentTurnRequest(
+    val conversationId: String,
+    val message: String,
+    val providerId: String? = null,
+    val maxIterations: Int? = null,
+)
+
+/** Data of a done:false envelope carrying one tool-call lifecycle event. */
+@Serializable
+data class AgentToolEvent(
+    val toolEvent: ToolCallEvent,
+)
+
+/** Data of the terminal done:true envelope: the full agent-turn result. */
+@Serializable
+data class AgentTurnResponse(
+    val messageId: String,
+    val text: String,
+    val usage: ChatUsage,
+    val cost: ChatCost,
+    val changedFiles: List<String>,
+    val iterations: Int,
+    val cancelled: Boolean,
+    val stopReason: String,
+    val budget: ChatBudgetStatus? = null,
+)
+
 /** One file in a multi-file diff the user reviews before it is written. */
 @Serializable
 data class ReviewFile(
