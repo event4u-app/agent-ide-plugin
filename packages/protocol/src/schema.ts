@@ -487,6 +487,52 @@ export const ChatTokenEventSchema = z.object({
 });
 export type ChatTokenEvent = z.infer<typeof ChatTokenEventSchema>;
 
+/**
+ * Pre-send cost estimate for a turn (T-PRD06). A range — not a false-precise
+ * single number — since output length and cache state are unknown before the
+ * turn runs. The Core computes it from `countInputTokens` + the pricing book.
+ */
+export const ChatEstimateSchema = z.object({
+  model: z.string(),
+  inputTokens: z.number().int().nonnegative(),
+  lowerUsd: z.number().nonnegative(),
+  upperUsd: z.number().nonnegative(),
+  typicalUsd: z.number().nonnegative(),
+});
+export type ChatEstimate = z.infer<typeof ChatEstimateSchema>;
+
+/**
+ * Data of an early `done:false` envelope carrying the pre-send estimate
+ * (AI council 2026-06-01 fork B1: emit before the first token so the composer
+ * can show the estimate while the turn runs, not as post-hoc metadata). The
+ * Core emits at most one of these, before the first {@link ChatTokenEvent}.
+ * Clients tell the two `done:false` shapes apart by key presence
+ * (`estimate` vs `token`).
+ */
+export const ChatEstimateEventSchema = z.object({
+  estimate: ChatEstimateSchema,
+});
+export type ChatEstimateEvent = z.infer<typeof ChatEstimateEventSchema>;
+
+/**
+ * Daily-budget status the composer footer renders (T-PRD06). Mirrors the Core
+ * `BudgetStatus`. `limitUsd`/`remainingUsd`/`ratio` are `null` when no daily
+ * budget is configured. `overBudget` is informational — the hard-cap confirm
+ * dialog is an IDE concern (AI council fork B-warn: the Core flags, never blocks).
+ */
+export const ChatBudgetStatusSchema = z.object({
+  /** `YYYY-MM-DD` the figures are for. */
+  date: z.string(),
+  spentUsd: z.number().nonnegative(),
+  limitUsd: z.number().nullable(),
+  remainingUsd: z.number().nullable(),
+  ratio: z.number().nullable(),
+  overBudget: z.boolean(),
+  /** `ratio >= warning threshold` — the soft "approaching budget" signal. */
+  warning: z.boolean(),
+});
+export type ChatBudgetStatus = z.infer<typeof ChatBudgetStatusSchema>;
+
 /** Data of the terminal `done:true` envelope: the full turn result. */
 export const ChatSendResponseSchema = z.object({
   /** Stable id of the persisted assistant message. */
@@ -499,6 +545,11 @@ export const ChatSendResponseSchema = z.object({
   cancelled: z.boolean(),
   /** LLM stop reason, or `cancelled` on abort. */
   stopReason: z.string(),
+  /**
+   * Daily-budget status after this turn's spend, when a budget recorder is
+   * configured. Absent when none is wired (backward-compatible additive field).
+   */
+  budget: ChatBudgetStatusSchema.optional(),
 });
 export type ChatSendResponse = z.infer<typeof ChatSendResponseSchema>;
 

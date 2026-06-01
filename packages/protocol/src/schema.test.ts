@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   AnnotationSchema,
+  ChatBudgetStatusSchema,
   ChatCostSchema,
+  ChatEstimateEventSchema,
   ChatSendRequestSchema,
   ChatSendResponseSchema,
   ChatTokenEventSchema,
@@ -417,5 +419,53 @@ describe('tool-call lifecycle union (product-readiness Phase 1)', () => {
       ],
     });
     expect(review.files.map((f) => f.path)).toEqual(['a.ts', 'b.ts']);
+  });
+});
+
+describe('chat cost & budget wire schemas (T-PRD06)', () => {
+  it('parses a pre-send estimate event', () => {
+    const event = ChatEstimateEventSchema.parse({
+      estimate: { model: 'm', inputTokens: 1000, lowerUsd: 0.01, upperUsd: 0.12, typicalUsd: 0.04 },
+    });
+    expect(event.estimate.inputTokens).toBe(1000);
+  });
+
+  it('accepts a budget status with null limit fields (no budget configured)', () => {
+    const status = ChatBudgetStatusSchema.parse({
+      date: '2026-06-01',
+      spentUsd: 0.5,
+      limitUsd: null,
+      remainingUsd: null,
+      ratio: null,
+      overBudget: false,
+      warning: false,
+    });
+    expect(status.limitUsd).toBeNull();
+  });
+
+  it('ChatSendResponse keeps budget optional (older clients parse unchanged)', () => {
+    const withoutBudget = ChatSendResponseSchema.parse({
+      messageId: 'm1',
+      text: 'hi',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      cost: { model: 'm', mode: 'api', totalUsd: 0, isEstimate: false },
+      cancelled: false,
+      stopReason: 'end_turn',
+    });
+    expect(withoutBudget.budget).toBeUndefined();
+
+    const withBudget = ChatSendResponseSchema.parse({
+      ...withoutBudget,
+      budget: {
+        date: '2026-06-01',
+        spentUsd: 1,
+        limitUsd: 10,
+        remainingUsd: 9,
+        ratio: 0.1,
+        overBudget: false,
+        warning: false,
+      },
+    });
+    expect(withBudget.budget?.remainingUsd).toBe(9);
   });
 });

@@ -222,6 +222,35 @@ const classes: DataClass[] = [
     fields: [{ name: 'token', kotlinType: 'String' }],
   },
   {
+    name: 'ChatEstimate',
+    doc: 'Pre-send cost estimate for a turn (T-PRD06): a range, not a single number.',
+    fields: [
+      { name: 'model', kotlinType: 'String' },
+      { name: 'inputTokens', kotlinType: 'Int' },
+      { name: 'lowerUsd', kotlinType: 'Double' },
+      { name: 'upperUsd', kotlinType: 'Double' },
+      { name: 'typicalUsd', kotlinType: 'Double' },
+    ],
+  },
+  {
+    name: 'ChatEstimateEvent',
+    doc: 'Data of an early done:false envelope carrying the pre-send estimate (B1).',
+    fields: [{ name: 'estimate', kotlinType: 'ChatEstimate' }],
+  },
+  {
+    name: 'ChatBudgetStatus',
+    doc: 'Daily-budget status after a turn (T-PRD06); nullable fields are null when no budget is set.',
+    fields: [
+      { name: 'date', kotlinType: 'String' },
+      { name: 'spentUsd', kotlinType: 'Double' },
+      { name: 'limitUsd', kotlinType: 'Double?', default: 'null' },
+      { name: 'remainingUsd', kotlinType: 'Double?', default: 'null' },
+      { name: 'ratio', kotlinType: 'Double?', default: 'null' },
+      { name: 'overBudget', kotlinType: 'Boolean' },
+      { name: 'warning', kotlinType: 'Boolean' },
+    ],
+  },
+  {
     name: 'ChatSendResponse',
     doc: 'Data of the terminal done:true envelope: the full turn result.',
     fields: [
@@ -231,6 +260,7 @@ const classes: DataClass[] = [
       { name: 'cost', kotlinType: 'ChatCost' },
       { name: 'cancelled', kotlinType: 'Boolean' },
       { name: 'stopReason', kotlinType: 'String' },
+      { name: 'budget', kotlinType: 'ChatBudgetStatus?', default: 'null' },
     ],
   },
   {
