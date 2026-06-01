@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AgentToolEventSchema,
+  AgentTurnRequestSchema,
+  AgentTurnResponseSchema,
   AnnotationSchema,
   ChatBudgetStatusSchema,
   ChatCostSchema,
@@ -324,6 +327,7 @@ describe('chat schemas (vertical slice)', () => {
 describe('method registry', () => {
   it('exposes the multi-project + terminal + chat methods alongside ping/echo', () => {
     expect(Object.keys(Methods).sort()).toEqual([
+      'agentTurn',
       'chatCancel',
       'chatSend',
       'connect',
@@ -346,9 +350,34 @@ describe('method registry', () => {
     expect(() => MethodNameSchema.parse('frobnicate')).toThrow();
   });
 
-  it('does NOT register a tool-call method yet (transport deferred this slice)', () => {
-    expect(Object.keys(Methods)).not.toContain('agentTurn');
+  it('registers agentTurn but not a bare toolCall method', () => {
+    expect(Object.keys(Methods)).toContain('agentTurn');
     expect(Object.keys(Methods)).not.toContain('toolCall');
+  });
+
+  it('agentTurn request/response round-trip the wire shapes', () => {
+    const req = AgentTurnRequestSchema.parse({
+      conversationId: 'c1',
+      message: 'edit the file',
+      maxIterations: 5,
+    });
+    expect(req.maxIterations).toBe(5);
+    const res = AgentTurnResponseSchema.parse({
+      messageId: 'm1',
+      text: 'done',
+      usage: { inputTokens: 10, outputTokens: 4 },
+      cost: { model: 'claude', mode: 'api', totalUsd: 0.01, isEstimate: false },
+      changedFiles: ['a.ts', 'b.ts'],
+      iterations: 2,
+      cancelled: false,
+      stopReason: 'end_turn',
+    });
+    expect(res.changedFiles).toEqual(['a.ts', 'b.ts']);
+    expect(res.iterations).toBe(2);
+    const ev = AgentToolEventSchema.parse({
+      toolEvent: { kind: 'started', id: 't1', name: 'write_files', argsPreview: '{}' },
+    });
+    expect(ev.toolEvent.kind).toBe('started');
   });
 });
 

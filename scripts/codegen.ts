@@ -272,6 +272,38 @@ const classes: DataClass[] = [
     fields: [{ name: 'cancelled', kotlinType: 'Boolean' }],
   },
 
+  // --- agent turn: chat that edits files (product-readiness) -----------
+  {
+    name: 'AgentTurnRequest',
+    doc: 'Start an agentic chat turn (LLM + tool loop). maxIterations caps the loop; omitted = Core default.',
+    fields: [
+      { name: 'conversationId', kotlinType: 'String' },
+      { name: 'message', kotlinType: 'String' },
+      { name: 'providerId', kotlinType: 'String?', default: 'null' },
+      { name: 'maxIterations', kotlinType: 'Int?', default: 'null' },
+    ],
+  },
+  {
+    name: 'AgentToolEvent',
+    doc: 'Data of a done:false envelope carrying one tool-call lifecycle event.',
+    fields: [{ name: 'toolEvent', kotlinType: 'ToolCallEvent' }],
+  },
+  {
+    name: 'AgentTurnResponse',
+    doc: 'Data of the terminal done:true envelope: the full agent-turn result.',
+    fields: [
+      { name: 'messageId', kotlinType: 'String' },
+      { name: 'text', kotlinType: 'String' },
+      { name: 'usage', kotlinType: 'ChatUsage' },
+      { name: 'cost', kotlinType: 'ChatCost' },
+      { name: 'changedFiles', kotlinType: 'List<String>' },
+      { name: 'iterations', kotlinType: 'Int' },
+      { name: 'cancelled', kotlinType: 'Boolean' },
+      { name: 'stopReason', kotlinType: 'String' },
+      { name: 'budget', kotlinType: 'ChatBudgetStatus?', default: 'null' },
+    ],
+  },
+
   // --- tool-call review payload (product-readiness Phase 1, T-PRD02) ---
   {
     name: 'ReviewFile',
