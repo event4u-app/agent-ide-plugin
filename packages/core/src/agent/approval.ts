@@ -1,6 +1,6 @@
 import type { ToolCallEvent, ToolReview } from '@event4u-agent/protocol';
 import type { AuditRecorder } from '../permissions/audit.js';
-import type { PermissionDecision, PermissionGate } from '../permissions/gate.js';
+import { classifyRisk, type PermissionDecision, type PermissionGate } from '../permissions/gate.js';
 import type { NormalizedToolCall } from '../tools/normalizer.js';
 
 /**
@@ -96,10 +96,15 @@ export async function* runToolCallWithApproval(
       ...(ctx.riskReason ? { riskReason: ctx.riskReason } : {}),
       ...(ctx.review ? { review: ctx.review } : {}),
     };
+    // Core owns the risk-badge classification (B2: presentation hint on the
+    // event only — the decider keeps the authoritative `level`, never the
+    // lossy projection). Both IDE clients render this one consistent badge.
+    const riskLevel = classifyRisk(verdict.level);
     yield {
       kind: 'approvalRequested',
       id,
       level: verdict.level,
+      riskLevel,
       ...(ctx.riskReason ? { riskReason: ctx.riskReason } : {}),
       ...(ctx.review ? { review: ctx.review } : {}),
     };

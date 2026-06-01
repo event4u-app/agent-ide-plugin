@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
+import { RiskLevelSchema as ProtocolRiskLevelSchema } from '@event4u-agent/protocol';
 import type { ToolCallEvent } from '@event4u-agent/protocol';
 import type { AuditEntry, AuditRecorder } from '../permissions/audit.js';
-import { PermissionGate, type PermissionDecision } from '../permissions/gate.js';
+import {
+  classifyRisk,
+  PermissionGate,
+  RiskLevelSchema,
+  type PermissionDecision,
+} from '../permissions/gate.js';
 import type { NormalizedToolCall } from '../tools/normalizer.js';
 import {
   type ApprovalContext,
@@ -50,6 +56,8 @@ describe('runToolCallWithApproval', () => {
     expect(kinds(events)).toEqual(['started', 'approvalRequested', 'approvalResolved', 'result']);
     const ask = events[1];
     expect(ask.kind === 'approvalRequested' && ask.level).toBe('requires_approval');
+    // Core classifies the badge: requires_approval → high (B2: event-only hint).
+    expect(ask.kind === 'approvalRequested' && ask.riskLevel).toBe('high');
     expect(exec).toHaveBeenCalledOnce();
   });
 
@@ -140,6 +148,8 @@ describe('runToolCallWithApproval', () => {
     );
     const ask = events[1];
     expect(ask.kind === 'approvalRequested' && ask.level).toBe('requires_diff_approval');
+    // requires_diff_approval → medium badge.
+    expect(ask.kind === 'approvalRequested' && ask.riskLevel).toBe('medium');
     expect(ask.kind === 'approvalRequested' && ask.review?.files[0]?.path).toBe('a.ts');
   });
 
@@ -246,5 +256,20 @@ describe('previewArgs', () => {
     const preview = previewArgs('y'.repeat(500));
     expect(preview.length).toBe(201);
     expect(preview.endsWith('…')).toBe(true);
+  });
+});
+
+describe('classifyRisk wiring (T-PRD05)', () => {
+  it('maps each ask-level to its badge', () => {
+    expect(classifyRisk('low')).toBe('low');
+    expect(classifyRisk('requires_diff_approval')).toBe('medium');
+    expect(classifyRisk('requires_approval')).toBe('high');
+    expect(classifyRisk('denied')).toBe('high');
+  });
+
+  it('keeps the wire RiskLevel enum in lock-step with the core one (drift guard)', () => {
+    // The protocol mirror and the core source must never diverge — a new core
+    // risk band that is not on the wire would make the badge unrepresentable.
+    expect(ProtocolRiskLevelSchema.options).toEqual(RiskLevelSchema.options);
   });
 });
