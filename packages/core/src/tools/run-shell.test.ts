@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { FakeTerminal } from '../terminal/pty.js';
 import { TerminalSessionManager } from '../terminal/manager.js';
@@ -43,7 +44,8 @@ describe('resolveCwdInside', () => {
   });
 
   it('resolves a relative path inside the root', () => {
-    expect(resolveCwdInside(ROOT, 'packages/core')).toBe('/ws/packages/core');
+    // Compare against the platform-native resolve (Windows uses a drive + `\`).
+    expect(resolveCwdInside(ROOT, 'packages/core')).toBe(resolve(ROOT, 'packages/core'));
   });
 
   it('refuses a path that escapes the root', () => {
