@@ -922,8 +922,12 @@ export const GitSeverityCountSchema = z.object({
 export type GitSeverityCount = z.infer<typeof GitSeverityCountSchema>;
 
 /**
- * Minimal wire view of one review finding (E1 — the full internal `ReviewIssue`
- * carries votes/confidence/proposedFix that stay out of the protocol).
+ * Minimal wire view of one review finding. Votes/confidence stay out of the
+ * protocol (E1 — they are trust signals, not transport). `quotedSpan` +
+ * `proposedFix` ARE surfaced when present: they are the functional inputs the
+ * client echoes back to `gitReviewApplyFix` to build the fix edit (T-CR-404).
+ * `fixable` is the precomputed `proposedFix && quotedSpan` predicate so the
+ * client can offer a "Preview fix" affordance without re-deriving it.
  */
 export const GitReviewFindingSchema = z.object({
   file: z.string(),
@@ -932,6 +936,12 @@ export const GitReviewFindingSchema = z.object({
   severity: z.string(),
   category: z.string(),
   description: z.string(),
+  /** Verbatim code the finding quoted — the apply-fix anchor. Omitted when absent. */
+  quotedSpan: z.string().optional(),
+  /** Model-proposed replacement for `quotedSpan`. Omitted when the model proposed none. */
+  proposedFix: z.string().optional(),
+  /** Precomputed `proposedFix && quotedSpan` — whether apply-fix can build an edit. */
+  fixable: z.boolean(),
 });
 export type GitReviewFinding = z.infer<typeof GitReviewFindingSchema>;
 
@@ -956,6 +966,37 @@ export const GitReviewSummaryResponseSchema = z.object({
   topFindings: z.array(GitReviewFindingSchema),
 });
 export type GitReviewSummaryResponse = z.infer<typeof GitReviewSummaryResponseSchema>;
+
+/**
+ * `gitReviewApplyFix` request — stateless echo (fork A1): the client sends back
+ * the `file` + `quotedSpan` + `proposedFix` it received on a `gitReviewSummary`
+ * finding. The Core re-reads the CURRENT file and revalidates the span, so the
+ * echoed values are untrusted transport inputs, never authoritative.
+ */
+export const GitReviewApplyFixRequestSchema = z.object({
+  cwd: z.string().min(1),
+  /** Workspace-relative path of the finding's file. */
+  file: z.string().min(1),
+  /** Verbatim span to replace — revalidated against the CURRENT file (span-drift safe). */
+  quotedSpan: z.string().min(1),
+  /** Replacement text the model proposed for the span. */
+  proposedFix: z.string(),
+});
+export type GitReviewApplyFixRequest = z.infer<typeof GitReviewApplyFixRequestSchema>;
+
+/**
+ * Result of turning a finding's proposed fix into a permission-gated edit. The
+ * Core NEVER writes — it returns the approval `review` diff (the same DTO other
+ * write proposals carry); the actual write rides the user-approved write path.
+ * `applicable:false` (+ `reason`) is the expected outcome when the fix no-ops
+ * or the span drifted — NOT an error (the client greys out the affordance).
+ */
+export const GitReviewApplyFixResponseSchema = z.object({
+  applicable: z.boolean(),
+  review: ToolReviewSchema.optional(),
+  reason: z.string().optional(),
+});
+export type GitReviewApplyFixResponse = z.infer<typeof GitReviewApplyFixResponseSchema>;
 
 // --- method registry ----------------------------------------------------
 
@@ -997,6 +1038,10 @@ export const Methods = {
   gitReviewSummary: {
     request: GitReviewSummaryRequestSchema,
     response: GitReviewSummaryResponseSchema,
+  },
+  gitReviewApplyFix: {
+    request: GitReviewApplyFixRequestSchema,
+    response: GitReviewApplyFixResponseSchema,
   },
 } as const;
 

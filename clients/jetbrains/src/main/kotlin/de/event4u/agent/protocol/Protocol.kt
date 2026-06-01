@@ -367,7 +367,7 @@ data class GitSeverityCount(
     val count: Int,
 )
 
-/** Minimal wire view of one review finding (no votes/confidence leak). */
+/** Wire view of one review finding; quotedSpan/proposedFix feed apply-fix (T-CR-404). */
 @Serializable
 data class GitReviewFinding(
     val file: String,
@@ -375,6 +375,9 @@ data class GitReviewFinding(
     val severity: String,
     val category: String,
     val description: String,
+    val fixable: Boolean,
+    val quotedSpan: String? = null,
+    val proposedFix: String? = null,
 )
 
 /** gitReviewSummary request — runs the review engine over the selected diff. */
@@ -397,6 +400,23 @@ data class GitReviewSummaryResponse(
     val totalFindings: Int,
     val potentialFindings: Int,
     val topFindings: List<GitReviewFinding> = emptyList(),
+)
+
+/** gitReviewApplyFix request — echo a finding fix; Core re-reads + revalidates the span. */
+@Serializable
+data class GitReviewApplyFixRequest(
+    val cwd: String,
+    val file: String,
+    val quotedSpan: String,
+    val proposedFix: String,
+)
+
+/** Apply-fix result — the approval diff, or applicable:false + reason on no-op/drift. */
+@Serializable
+data class GitReviewApplyFixResponse(
+    val applicable: Boolean,
+    val review: ToolReview? = null,
+    val reason: String? = null,
 )
 
 /** The typed event union streamed on the terminalSubscribe channel (Phase 9). */
