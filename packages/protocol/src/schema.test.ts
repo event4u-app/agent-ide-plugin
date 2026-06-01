@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AnnotationSchema,
   ChatCostSchema,
   ChatSendRequestSchema,
   ChatSendResponseSchema,
   ChatTokenEventSchema,
   ConnectRequestSchema,
   ContextScopeSchema,
+  ContextSnippetAnnotationSchema,
   EchoRequestSchema,
   EchoResponseSchema,
   EnvelopeSchema,
@@ -110,6 +112,41 @@ describe('context scope (discriminated union)', () => {
 
   it('rejects an empty explicit root set (use kind:none instead)', () => {
     expect(() => ContextScopeSchema.parse({ kind: 'roots', rootIds: [] })).toThrow();
+  });
+});
+
+describe('annotation schemas (T-1308 context-snippet seam)', () => {
+  const snippet = {
+    kind: 'context-snippet' as const,
+    rootId: 'A',
+    filePath: 'src/auth.ts',
+    startLine: 0,
+    endLine: 2,
+    relevance: 0.5,
+    category: 'source' as const,
+    preview: 'export function authenticateUser() {}',
+  };
+
+  it('accepts a well-formed context-snippet annotation via the union', () => {
+    const parsed = AnnotationSchema.parse(snippet);
+    expect(parsed.kind).toBe('context-snippet');
+    expect(ContextSnippetAnnotationSchema.parse(snippet).filePath).toBe('src/auth.ts');
+  });
+
+  it('rejects relevance outside 0..1', () => {
+    expect(() => ContextSnippetAnnotationSchema.parse({ ...snippet, relevance: 1.5 })).toThrow();
+    expect(() => ContextSnippetAnnotationSchema.parse({ ...snippet, relevance: -0.1 })).toThrow();
+  });
+
+  it('rejects an unknown category and a negative line number', () => {
+    expect(() =>
+      ContextSnippetAnnotationSchema.parse({ ...snippet, category: 'binary' }),
+    ).toThrow();
+    expect(() => ContextSnippetAnnotationSchema.parse({ ...snippet, startLine: -1 })).toThrow();
+  });
+
+  it('rejects an unknown annotation kind', () => {
+    expect(() => AnnotationSchema.parse({ ...snippet, kind: 'code-suggestion' })).toThrow();
   });
 });
 

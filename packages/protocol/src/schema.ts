@@ -158,6 +158,55 @@ export const ContextScopeSchema = z.discriminatedUnion('kind', [
 ]);
 export type ContextScope = z.infer<typeof ContextScopeSchema>;
 
+// --- message annotations (T-1308 — context-snippet seam) ----------------
+
+/**
+ * Message annotations (SweepAI-derived `Message.annotations` contract;
+ * `road-to-mvp-ui-design.md` § "Data + render contract" is the design
+ * authority). An annotation is an artifact that rides on the turn that
+ * produced it — NOT a separate UI channel. Modelled as a `kind`-tagged
+ * discriminated union so the wire surface and the Kotlin sealed hierarchy
+ * stay extensible (code-suggestion / status rows land later) without a
+ * breaking reshuffle.
+ *
+ * This slice ships ONLY the `context-snippet` member: the data a future
+ * IDE "Context Side Bar / SnippetBadge" renders (T-1308). The render itself
+ * (badge opacity, colour, hover-preview, search-add, click-to-open) stays
+ * IDE-deferred.
+ */
+
+/**
+ * Coarse source classification driving the badge COLOUR. Derived
+ * deterministically in core from the file path (see `classifySnippet` in
+ * `@event4u-agent/core`); kept on the wire so VS Code and JetBrains never
+ * drift on the rule.
+ */
+export const SnippetCategorySchema = z.enum(['source', 'test', 'docs', 'dependency']);
+export type SnippetCategory = z.infer<typeof SnippetCategorySchema>;
+
+/**
+ * One retrieved code snippet in the current turn's context. `relevance` is a
+ * core-normalized 0..1 score (min-max over the result set; a single result or
+ * an all-equal set normalizes to `1`) — the IDE maps it to badge opacity with
+ * its own floor, so the wire never carries a render decision. Line numbers are
+ * carried verbatim from the chunk reference the Context Engine produced.
+ */
+export const ContextSnippetAnnotationSchema = z.object({
+  kind: z.literal('context-snippet'),
+  rootId: z.string(),
+  filePath: z.string(),
+  startLine: z.number().int().nonnegative(),
+  endLine: z.number().int().nonnegative(),
+  relevance: z.number().min(0).max(1),
+  category: SnippetCategorySchema,
+  /** Bounded slice of the snippet (±context, capped) for an instant hover-preview. */
+  preview: z.string(),
+});
+export type ContextSnippetAnnotation = z.infer<typeof ContextSnippetAnnotationSchema>;
+
+export const AnnotationSchema = z.discriminatedUnion('kind', [ContextSnippetAnnotationSchema]);
+export type Annotation = z.infer<typeof AnnotationSchema>;
+
 // --- live terminal (Phase 9, T-903) -------------------------------------
 
 /**
