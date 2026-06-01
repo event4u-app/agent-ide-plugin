@@ -480,6 +480,27 @@ const classes: DataClass[] = [
       { name: 'reason', kotlinType: 'String?', default: 'null' },
     ],
   },
+  {
+    name: 'CostReportRequest',
+    doc: 'costReport request — optional inclusive ISO-8601 window over step.ts (T-707 backend).',
+    fields: [
+      { name: 'since', kotlinType: 'String?', default: 'null' },
+      { name: 'until', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'CostReportResponse',
+    doc: 'Aggregated step-event cost report feeding the Cost Dashboard widgets (T-707).',
+    fields: [
+      { name: 'totalUsd', kotlinType: 'Double' },
+      { name: 'stepCount', kotlinType: 'Int' },
+      { name: 'byActivity', kotlinType: 'Map<String, Double>', default: 'emptyMap()' },
+      { name: 'byMode', kotlinType: 'Map<String, Double>', default: 'emptyMap()' },
+      { name: 'byModel', kotlinType: 'Map<String, Double>', default: 'emptyMap()' },
+      { name: 'shadowApiUsd', kotlinType: 'Double' },
+      { name: 'cliStepCount', kotlinType: 'Int' },
+    ],
+  },
 ];
 
 // Discriminated unions → Kotlin sealed hierarchies (T-PRD04). TerminalEvent

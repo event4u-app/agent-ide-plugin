@@ -14,6 +14,8 @@ import {
   CodeSuggestionAnnotationSchema,
   ContextScopeSchema,
   ContextSnippetAnnotationSchema,
+  CostReportRequestSchema,
+  CostReportResponseSchema,
   EchoRequestSchema,
   EchoResponseSchema,
   EnvelopeSchema,
@@ -335,6 +337,7 @@ describe('method registry', () => {
       'chatCancel',
       'chatSend',
       'connect',
+      'costReport',
       'echo',
       'gitCommitMessage',
       'gitPrDescription',
@@ -382,6 +385,23 @@ describe('method registry', () => {
     ]);
     // The wire shape carries no field that could leak the key value.
     expect(Object.keys(res)).not.toContain('apiKey');
+  });
+
+  it('costReport request/response round-trip the aggregate shape', () => {
+    const req = CostReportRequestSchema.parse({ since: '2026-06-01T00:00:00.000Z' });
+    expect(req.since).toBe('2026-06-01T00:00:00.000Z');
+    const res = CostReportResponseSchema.parse({
+      totalUsd: 1.25,
+      stepCount: 3,
+      byActivity: { chat: 0.5, agent: 0.75 },
+      byMode: { api: 1.0, cli: 0.25 },
+      byModel: { 'claude-sonnet-4-6': 1.25 },
+      shadowApiUsd: 0.25,
+      cliStepCount: 1,
+    });
+    expect(res.totalUsd).toBe(1.25);
+    expect(res.byMode.cli).toBe(0.25);
+    expect(res.shadowApiUsd).toBe(0.25);
   });
 
   it('agentTurn request/response round-trip the wire shapes', () => {
