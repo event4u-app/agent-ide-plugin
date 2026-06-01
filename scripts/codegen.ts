@@ -104,6 +104,29 @@ const classes: DataClass[] = [
     fields: [{ name: 'status', kotlinType: 'List<RootIndexStatus>' }],
   },
 
+  // --- onboarding readiness (T-PRD12) ---
+  {
+    name: 'OnboardingNodeReadiness',
+    doc: 'Host Node runtime readiness; version/major null when none found.',
+    fields: [
+      { name: 'version', kotlinType: 'String?' },
+      { name: 'major', kotlinType: 'Int?' },
+      { name: 'ok', kotlinType: 'Boolean' },
+    ],
+  },
+  {
+    name: 'OnboardingDetectResponse',
+    doc: 'First-run host readiness; provider presence is boolean, never a key value.',
+    fields: [
+      { name: 'node', kotlinType: 'OnboardingNodeReadiness' },
+      { name: 'anthropicKey', kotlinType: 'Boolean' },
+      { name: 'claudeCli', kotlinType: 'Boolean' },
+      { name: 'recommendedMode', kotlinType: 'String' },
+      { name: 'ready', kotlinType: 'Boolean' },
+      { name: 'blockers', kotlinType: 'List<String>' },
+    ],
+  },
+
   // --- live terminal (Phase 9, T-903) ---
   {
     name: 'OutputChunk',

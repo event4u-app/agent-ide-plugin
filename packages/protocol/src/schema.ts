@@ -138,6 +138,45 @@ export const RootStatusResponseSchema = z.object({
 });
 export type RootStatusResponse = z.infer<typeof RootStatusResponseSchema>;
 
+// --- onboardingDetect query (first-run host readiness; T-PRD12) ---------
+//
+// A packaged plugin (no repo checkout) asks the sidecar, on first run,
+// whether the host can run the agent at all. The wire shape mirrors core's
+// `ReadinessReport` (onboarding/detect.ts) but is owned here — the protocol
+// package never imports core. The report carries only BOOLEANS for provider
+// presence: `anthropicKey` says a non-empty key is visible, NEVER the value.
+
+export const OnboardingNodeReadinessSchema = z.object({
+  /** Raw Node version string the host reported, or null when none was found. */
+  version: z.string().nullable(),
+  /** Parsed major version, or null when missing / unparseable. */
+  major: z.number().int().nullable(),
+  /** True when a Node runtime new enough to host the sidecar is available. */
+  ok: z.boolean(),
+});
+export type OnboardingNodeReadiness = z.infer<typeof OnboardingNodeReadinessSchema>;
+
+/** Best mode the detected host can drive, best-first: `api` > `cli` > `none`. */
+export const OnboardingRecommendedModeSchema = z.enum(['api', 'cli', 'none']);
+export type OnboardingRecommendedMode = z.infer<typeof OnboardingRecommendedModeSchema>;
+
+export const OnboardingDetectRequestSchema = z.object({});
+export type OnboardingDetectRequest = z.infer<typeof OnboardingDetectRequestSchema>;
+
+export const OnboardingDetectResponseSchema = z.object({
+  node: OnboardingNodeReadinessSchema,
+  /** A non-empty `ANTHROPIC_API_KEY` is visible to the host (boolean only). */
+  anthropicKey: z.boolean(),
+  /** The `claude` CLI resolves on PATH. */
+  claudeCli: z.boolean(),
+  recommendedMode: OnboardingRecommendedModeSchema,
+  /** True when the host can run the agent: usable Node AND a provider path. */
+  ready: z.boolean(),
+  /** Human-orderable blockers, most-fundamental first. Empty when `ready`. */
+  blockers: z.array(z.string()),
+});
+export type OnboardingDetectResponse = z.infer<typeof OnboardingDetectResponseSchema>;
+
 // --- per-turn context scope (consumed in Phase C, T-MR13) ---------------
 
 /**
@@ -934,6 +973,10 @@ export const Methods = {
     response: WorkspaceFoldersChangedResponseSchema,
   },
   rootStatus: { request: RootStatusRequestSchema, response: RootStatusResponseSchema },
+  onboardingDetect: {
+    request: OnboardingDetectRequestSchema,
+    response: OnboardingDetectResponseSchema,
+  },
   terminalSubscribe: {
     request: TerminalSubscribeRequestSchema,
     response: TerminalSubscribeResponseSchema,

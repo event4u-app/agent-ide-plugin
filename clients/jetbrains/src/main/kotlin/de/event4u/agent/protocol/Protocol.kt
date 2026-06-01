@@ -84,6 +84,25 @@ data class RootStatusResponse(
     val status: List<RootIndexStatus>,
 )
 
+/** Host Node runtime readiness; version/major null when none found. */
+@Serializable
+data class OnboardingNodeReadiness(
+    val version: String?,
+    val major: Int?,
+    val ok: Boolean,
+)
+
+/** First-run host readiness; provider presence is boolean, never a key value. */
+@Serializable
+data class OnboardingDetectResponse(
+    val node: OnboardingNodeReadiness,
+    val anthropicKey: Boolean,
+    val claudeCli: Boolean,
+    val recommendedMode: String,
+    val ready: Boolean,
+    val blockers: List<String>,
+)
+
 /** One chunk of raw PTY output; seq is monotonic per session. */
 @Serializable
 data class OutputChunk(
