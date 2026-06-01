@@ -618,6 +618,16 @@ export type ToolReview = z.infer<typeof ToolReviewSchema>;
 export const ApprovalLevelSchema = z.enum(['requires_diff_approval', 'requires_approval']);
 export type ApprovalLevel = z.infer<typeof ApprovalLevelSchema>;
 
+/**
+ * Wire mirror of the core `RiskLevel` (permissions/gate.ts `classifyRisk`). The
+ * permission card's risk badge — a presentation hint, NOT a security boundary
+ * (ADR-004: the human at the confirmation button is the boundary). Core owns
+ * the classification so both clients render one consistent badge off the wire;
+ * a runtime drift guard keeps this enum in lock-step with the core one.
+ */
+export const RiskLevelSchema = z.enum(['low', 'medium', 'high']);
+export type RiskLevel = z.infer<typeof RiskLevelSchema>;
+
 /** Wire mirror of the core `PermissionDecision`. */
 export const ApprovalDecisionSchema = z.enum(['allow_once', 'always', 'deny']);
 export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
@@ -635,6 +645,8 @@ export const ToolCallEventSchema = z.discriminatedUnion('kind', [
     kind: z.literal('approvalRequested'),
     id: z.string().min(1),
     level: ApprovalLevelSchema,
+    /** Card risk badge, derived in core from `level` via `classifyRisk`. */
+    riskLevel: RiskLevelSchema,
     /** Why the gate is asking, when it can say. */
     riskReason: z.string().optional(),
     /** Present for diff-approval tools; the per-file diff the user reviews. */

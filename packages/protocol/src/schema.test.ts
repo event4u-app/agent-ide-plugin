@@ -451,13 +451,16 @@ describe('tool-call lifecycle union (product-readiness Phase 1)', () => {
       kind: 'approvalRequested',
       id: 't2',
       level: 'requires_approval',
+      riskLevel: 'high',
     });
     expect(bare.kind === 'approvalRequested' && bare.review).toBeUndefined();
+    expect(bare.kind === 'approvalRequested' && bare.riskLevel).toBe('high');
 
     const withDiff = ToolCallEventSchema.parse({
       kind: 'approvalRequested',
       id: 't3',
       level: 'requires_diff_approval',
+      riskLevel: 'medium',
       riskReason: 'writes 2 files',
       review: {
         kind: 'diff',
@@ -465,11 +468,33 @@ describe('tool-call lifecycle union (product-readiness Phase 1)', () => {
       },
     });
     expect(withDiff.kind === 'approvalRequested' && withDiff.review?.files).toHaveLength(1);
+    expect(withDiff.kind === 'approvalRequested' && withDiff.riskLevel).toBe('medium');
   });
 
-  it('rejects an unknown approval level and decision', () => {
+  it('rejects an unknown approval level, risk level, and decision', () => {
     expect(() =>
-      ToolCallEventSchema.parse({ kind: 'approvalRequested', id: 't4', level: 'auto' }),
+      ToolCallEventSchema.parse({
+        kind: 'approvalRequested',
+        id: 't4',
+        level: 'auto',
+        riskLevel: 'high',
+      }),
+    ).toThrow();
+    expect(() =>
+      ToolCallEventSchema.parse({
+        kind: 'approvalRequested',
+        id: 't4',
+        level: 'requires_approval',
+        riskLevel: 'critical',
+      }),
+    ).toThrow();
+    // riskLevel is required — an approvalRequested without it is rejected.
+    expect(() =>
+      ToolCallEventSchema.parse({
+        kind: 'approvalRequested',
+        id: 't4',
+        level: 'requires_approval',
+      }),
     ).toThrow();
     expect(() =>
       ToolCallEventSchema.parse({ kind: 'approvalResolved', id: 't4', decision: 'maybe' }),

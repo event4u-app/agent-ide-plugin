@@ -572,6 +572,7 @@ const sealedUnions: SealedUnion[] = [
         fields: [
           { name: 'id', kotlinType: 'String' },
           { name: 'level', kotlinType: 'String' },
+          { name: 'riskLevel', kotlinType: 'String' },
           { name: 'riskReason', kotlinType: 'String?', default: 'null' },
           { name: 'review', kotlinType: 'ToolReview?', default: 'null' },
         ],
