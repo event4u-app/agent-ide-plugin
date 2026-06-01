@@ -440,6 +440,25 @@ const sealedUnions: SealedUnion[] = [
     ],
   },
   {
+    name: 'Annotation',
+    doc: 'Chat-turn artifacts (SweepAI Message.annotations); T-1308 ships only the context-snippet member.',
+    variants: [
+      {
+        kind: 'context-snippet',
+        className: 'ContextSnippetAnnotation',
+        fields: [
+          { name: 'rootId', kotlinType: 'String' },
+          { name: 'filePath', kotlinType: 'String' },
+          { name: 'startLine', kotlinType: 'Int' },
+          { name: 'endLine', kotlinType: 'Int' },
+          { name: 'relevance', kotlinType: 'Double' },
+          { name: 'category', kotlinType: 'String' },
+          { name: 'preview', kotlinType: 'String' },
+        ],
+      },
+    ],
+  },
+  {
     name: 'ToolCallEvent',
     doc: 'The tool-call lifecycle union the IDE renders as approval / diff / result cards.',
     variants: [

@@ -387,6 +387,23 @@ data class ContextScopeRoots(
 @SerialName("none")
 object ContextScopeNone : ContextScope
 
+/** Chat-turn artifacts (SweepAI Message.annotations); T-1308 ships only the context-snippet member. */
+@Serializable
+@JsonClassDiscriminator("kind")
+sealed interface Annotation
+
+@Serializable
+@SerialName("context-snippet")
+data class ContextSnippetAnnotation(
+    val rootId: String,
+    val filePath: String,
+    val startLine: Int,
+    val endLine: Int,
+    val relevance: Double,
+    val category: String,
+    val preview: String,
+) : Annotation
+
 /** The tool-call lifecycle union the IDE renders as approval / diff / result cards. */
 @Serializable
 @JsonClassDiscriminator("kind")
