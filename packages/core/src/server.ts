@@ -15,6 +15,7 @@ import {
   GitPrDescriptionRequestSchema,
   type GitReviewSummaryResponse,
   GitReviewSummaryRequestSchema,
+  type OnboardingDetectResponse,
   type PingResponse,
   PingRequestSchema,
   MethodNameSchema,
@@ -32,6 +33,8 @@ import type { AgentTurnHandler } from './agent/turn-handler.js';
 import type { ChatHandler, EnvelopeSink } from './chat/handler.js';
 import { type GitHandler, GitRequestError } from './git/handler.js';
 import { type TerminalHandler, TerminalRequestError } from './terminal/handler.js';
+import { detectReadiness, type DetectProbes } from './onboarding/detect.js';
+import { defaultDetectProbes } from './onboarding/probes.js';
 
 /** A handler maps a validated request payload to a response payload. */
 type Handler = (data: unknown) => Promise<unknown> | unknown;
@@ -58,6 +61,9 @@ export class Dispatcher {
     private readonly gitHandler?: GitHandler,
     private readonly agentTurnHandler?: AgentTurnHandler,
     private readonly terminalHandler?: TerminalHandler,
+    // First-run host readiness (T-PRD12). Defaults to live host probes;
+    // injectable so the dispatcher test pins Node/key/CLI deterministically.
+    private readonly onboardingProbes: DetectProbes = defaultDetectProbes(),
   ) {
     this.handlers = {
       ping: (): PingResponse => ({ result: 'pong' }),
@@ -76,6 +82,8 @@ export class Dispatcher {
         return { ack: true, status };
       },
       rootStatus: (): RootStatusResponse => ({ status: this.coordinator.status() }),
+      // First-run readiness: pure derivation over the injected host probes.
+      onboardingDetect: (): OnboardingDetectResponse => detectReadiness(this.onboardingProbes),
       chatCancel: (data: unknown): ChatCancelResponse => {
         const req = ChatCancelRequestSchema.parse(data ?? {});
         // One cancel surface per conversation (AI council fork 7A): a `chatSend`
