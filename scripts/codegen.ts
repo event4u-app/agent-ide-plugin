@@ -261,6 +261,8 @@ const classes: DataClass[] = [
       { name: 'cancelled', kotlinType: 'Boolean' },
       { name: 'stopReason', kotlinType: 'String' },
       { name: 'budget', kotlinType: 'ChatBudgetStatus?', default: 'null' },
+      // T-MR13 — context snippets folded into the turn (SnippetBadge render).
+      { name: 'annotations', kotlinType: 'List<ContextSnippetAnnotation>?', default: 'null' },
     ],
   },
   {

@@ -227,6 +227,7 @@ data class ChatSendResponse(
     val cancelled: Boolean,
     val stopReason: String,
     val budget: ChatBudgetStatus? = null,
+    val annotations: List<ContextSnippetAnnotation>? = null,
 )
 
 @Serializable
