@@ -27,6 +27,7 @@
 | [ADR-021](ADR-021-status-row-annotations.md) | Status-Row Annotations — Third Message.annotations Member, SweepAI Progress-Strings Surface (Durable over Transient, `active` State, Optional Phase on the Wire, Generic Descriptor Builder + Mode-Aware Wrapper, Detail-Only Progress Event, No-Op Invalid Transitions) | Proposed | 2026-06-01 | road-to-v1-0 Phase 13 (Message.annotations contract) |
 | [ADR-022](ADR-022-chat-cost-budget-wiring.md) | Chat Cost & Budget Wiring — Pre-Send Estimate Envelope + Injected Budget Recorder in the Chat Handler (Early done:false Estimate, Recorder Injection, Flag-Not-Block, Real-Cost-Only Debit) | Proposed | 2026-06-01 | road-to-product-readiness T-PRD06 |
 | [ADR-023](ADR-023-agent-turn-tool-loop.md) | Agent Turn — Agentic Tool-Loop in Chat (Dedicated agentTurn Method, Standalone Handler, Injectable Tool Registry, Bounded Sequential Loop, String-Only Persistence, Errors Fed Back) | Proposed | 2026-06-01 | road-to-product-readiness (multi-step agent-turn / Seam A) |
+| [ADR-024](ADR-024-workspace-guidelines-system-prompt.md) | Workspace Guidelines in the System Prompt — Fold guidelines.md into Both Turn Paths (Shared Resolver, Both Handlers, Narrow Loader Callback, Fresh-Per-Turn Load, Guidelines-Ahead-of-Base, Fail-Open) | Proposed | 2026-06-01 | road-to-v1-0 Phase 13 T-1307 (guidelines wiring) |
 
 ## Status legend
 

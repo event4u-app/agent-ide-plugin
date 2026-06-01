@@ -14,6 +14,7 @@ import type {
 } from '@event4u-agent/protocol';
 import type { EnvelopeSink } from '../chat/handler.js';
 import type { ConversationStore } from '../chat/store.js';
+import { resolveSystemPrompt, type LoadGuidelines } from '../chat/system-prompt.js';
 import type { BudgetRecorder, BudgetStatus } from '../cost/budget.js';
 import type { LlmBackend } from '../llm/backend.js';
 import { LlmStreamError } from '../llm/backend.js';
@@ -94,8 +95,17 @@ export interface AgentTurnHandlerDeps {
   maxIterations?: number;
   /** Per-iteration output cap. Default 2048. */
   maxTokens?: number;
-  /** Optional system prompt prepended to every iteration. */
+  /** Optional system prompt prepended to every iteration (the base; workspace
+   * guidelines from {@link loadGuidelines} are folded ahead of it per turn). */
   system?: string;
+  /**
+   * Optional workspace-guidelines loader (T-1307, AI council 2026-06-01,
+   * UNANIMOUS A2/B1/C2/D1/E1/F1). When set, the guidelines are folded ahead of
+   * {@link system} into the per-iteration prompt. Loaded ONCE per agent turn
+   * (not per loop iteration — keeps instructions stable across the loop) and
+   * fail-open (a loader error degrades to the base `system`).
+   */
+  loadGuidelines?: LoadGuidelines;
 }
 
 /** One LLM iteration's collected output. */
@@ -161,6 +171,12 @@ export class AgentTurnHandler {
       const toolDefs = this.deps.registry.definitions();
       const maxIterations = req.maxIterations ?? this.deps.maxIterations ?? DEFAULT_MAX_ITERATIONS;
       const maxTokens = this.deps.maxTokens ?? DEFAULT_MAX_TOKENS;
+      // Compose the system prompt ONCE per turn (council trap: loading per
+      // iteration could shift instructions mid-loop). Folds workspace
+      // guidelines ahead of the static base `system`; fail-open to the base.
+      const system = this.deps.loadGuidelines
+        ? await resolveSystemPrompt(this.deps.system, this.deps.loadGuidelines)
+        : this.deps.system;
 
       const aggUsage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
       const changedFiles: string[] = [];
@@ -182,7 +198,7 @@ export class AgentTurnHandler {
           messages,
           max_tokens: maxTokens,
           ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
-          ...(this.deps.system ? { system: this.deps.system } : {}),
+          ...(system ? { system } : {}),
         };
 
         const iter = await this.streamIteration(request, backend, token, messageId, emit);
