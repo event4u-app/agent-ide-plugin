@@ -189,6 +189,34 @@ data class ChatTokenEvent(
     val token: String,
 )
 
+/** Pre-send cost estimate for a turn (T-PRD06): a range, not a single number. */
+@Serializable
+data class ChatEstimate(
+    val model: String,
+    val inputTokens: Int,
+    val lowerUsd: Double,
+    val upperUsd: Double,
+    val typicalUsd: Double,
+)
+
+/** Data of an early done:false envelope carrying the pre-send estimate (B1). */
+@Serializable
+data class ChatEstimateEvent(
+    val estimate: ChatEstimate,
+)
+
+/** Daily-budget status after a turn (T-PRD06); nullable fields are null when no budget is set. */
+@Serializable
+data class ChatBudgetStatus(
+    val date: String,
+    val spentUsd: Double,
+    val limitUsd: Double? = null,
+    val remainingUsd: Double? = null,
+    val ratio: Double? = null,
+    val overBudget: Boolean,
+    val warning: Boolean,
+)
+
 /** Data of the terminal done:true envelope: the full turn result. */
 @Serializable
 data class ChatSendResponse(
@@ -198,6 +226,7 @@ data class ChatSendResponse(
     val cost: ChatCost,
     val cancelled: Boolean,
     val stopReason: String,
+    val budget: ChatBudgetStatus? = null,
 )
 
 @Serializable
