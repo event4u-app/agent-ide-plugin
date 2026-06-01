@@ -178,7 +178,7 @@ class SidecarChatController(
     @Synchronized
     private fun ensureClient(): SidecarClient {
         client?.let { return it }
-        val created = SidecarClient(SidecarLocator.locate(project.basePath))
+        val created = SidecarClient(SidecarLocator.locate(project.basePath), workingDir = project.basePath)
         created.start()
         client = created
         return created
