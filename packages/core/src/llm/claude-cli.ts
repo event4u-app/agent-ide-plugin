@@ -5,10 +5,18 @@ import type { LlmBackend } from './backend.js';
 /**
  * T-406 — Claude Code CLI backend.
  *
- * Spawns `claude -p --output-format=stream-json --input-format=stream-json`
+ * Spawns
+ * `claude -p --verbose --output-format=stream-json --input-format=stream-json`
  * as a subprocess. No PTY. Naive `spawn` pipe per the council-tight Sprint-4
  * scope. Interactive prompts hang or fail — the wrapper detects "no output
  * for 10s after stdin closed" and aborts with a clear error.
+ *
+ * Verified against `claude` 2.1.x (2026-06-01): print mode rejects
+ * `--output-format=stream-json` unless `--verbose` is also passed, the stdin
+ * line must be `{type:'user',message:{role:'user',content:<text>}}`, and the
+ * assistant text arrives nested under `message.content[]` text blocks — never
+ * a top-level `text` field. Earlier revisions guessed all three wrong, so a
+ * CLI turn streamed nothing and finished empty.
  */
 
 const NO_OUTPUT_TIMEOUT_MS = 10_000;
@@ -37,12 +45,27 @@ export class ClaudeCliBackend implements LlmBackend {
   }
 
   async *stream(request: LlmRequest, signal?: AbortSignal): AsyncIterable<LlmStreamEvent> {
-    const child = this.spawnFn(
-      this.binary,
-      ['-p', '--output-format=stream-json', '--input-format=stream-json'],
-      { stdio: ['pipe', 'pipe', 'pipe'] },
-    );
+    const args = ['-p', '--verbose', '--output-format=stream-json', '--input-format=stream-json'];
+    if (request.model.length > 0) args.push('--model', request.model);
+    const child = this.spawnFn(this.binary, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    // Surface a missing / unspawnable binary (ENOENT) as a clean error instead
+    // of an unhandled process-level 'error' event or a silent empty turn.
+    let spawnError: { code: string; message: string } | undefined;
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      spawnError = {
+        code: err.code === 'ENOENT' ? 'cli_not_found' : 'cli_spawn_failed',
+        message:
+          err.code === 'ENOENT'
+            ? `claude CLI not found (looked for "${this.binary}" on PATH) — run \`claude login\` or install Claude Code`
+            : (err.message ?? 'failed to spawn claude CLI'),
+      };
+    });
+
     const writeReq = serializeRequest(request);
+    child.stdin.on('error', () => {
+      // EPIPE when the binary never came up — the 'error' handler above owns the report.
+    });
     child.stdin.write(writeReq);
     child.stdin.end();
 
@@ -82,7 +105,9 @@ export class ClaudeCliBackend implements LlmBackend {
           yield normalized;
         }
       }
-      if (stoppedEarly) {
+      if (spawnError) {
+        yield { kind: 'error', ...spawnError };
+      } else if (stoppedEarly) {
         if (signal?.aborted) {
           yield { kind: 'error', code: 'aborted', message: 'stream aborted by caller' };
         } else {
@@ -104,17 +129,19 @@ export class ClaudeCliBackend implements LlmBackend {
 }
 
 export function serializeRequest(request: LlmRequest): string {
-  // Claude Code CLI accepts a JSONL stream of user-turn messages on stdin.
-  // For v0 we emit a single line: the assembled user prompt + a meta tag for
-  // the model id. The CLI ignores unknown keys — the schema is forward-compat.
+  // Claude Code CLI's `--input-format=stream-json` expects one JSONL user-turn
+  // per line shaped like the Messages API: `{type,message:{role,content}}`.
+  // The model is selected via the `--model` flag, not the payload. For v0 we
+  // emit a single line carrying the last user message (session resume — full
+  // history replay — is deferred).
   const last = request.messages[request.messages.length - 1];
-  const userText =
+  const content =
     last && typeof last.content === 'string'
       ? last.content
       : last
         ? JSON.stringify(last.content)
         : '';
-  return `${JSON.stringify({ type: 'user', text: userText, model: request.model })}\n`;
+  return `${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`;
 }
 
 async function* readNdjson(child: ChildProcessWithoutNullStreams): AsyncIterable<RawCliEvent> {
@@ -145,26 +172,41 @@ async function* readNdjson(child: ChildProcessWithoutNullStreams): AsyncIterable
   }
 }
 
+interface CliContentBlock {
+  type?: string;
+  text?: string;
+}
+
+/** Concatenate the text of every `{type:'text'}` block in an assistant message. */
+function textFromContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return (content as CliContentBlock[])
+    .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text as string)
+    .join('');
+}
+
+/**
+ * Normalize one real `claude` stream-json line into an {@link LlmStreamEvent}.
+ *
+ * The 2.1.x wire shape (verified 2026-06-01):
+ *  - `system` / `rate_limit_event` / `user` — control + tool-result echoes; ignored.
+ *  - `assistant` — `message.content[]`, text under `{type:'text',text}` blocks.
+ *  - `result` — terminal; carries the authoritative top-level `usage` + `stop_reason`.
+ *  - `error` — surfaced verbatim.
+ */
 export function translate(event: RawCliEvent, usage: LlmUsage): LlmStreamEvent | undefined {
   switch (event.type) {
-    case 'text':
-    case 'assistant': {
+    case 'text': {
+      // Defensive: older / partial-message shapes carried text at top level.
       const text = typeof event.text === 'string' ? event.text : '';
       return text.length > 0 ? { kind: 'text_delta', text } : undefined;
     }
-    case 'tool_use': {
-      const id = typeof event.id === 'string' ? event.id : 'cli-tool';
-      const name = typeof event.name === 'string' ? event.name : '';
-      return { kind: 'tool_use_start', id, name };
-    }
-    case 'tool_use_end': {
-      const id = typeof event.id === 'string' ? event.id : 'cli-tool';
-      const name = typeof event.name === 'string' ? event.name : '';
-      return { kind: 'tool_use_end', id, name, input: event.input };
-    }
-    case 'thinking': {
-      const text = typeof event.text === 'string' ? event.text : '';
-      return text.length > 0 ? { kind: 'thinking_delta', text } : undefined;
+    case 'assistant': {
+      const message = event.message as { content?: unknown } | undefined;
+      const text = textFromContent(message?.content ?? event.text);
+      return text.length > 0 ? { kind: 'text_delta', text } : undefined;
     }
     case 'result':
     case 'usage': {
@@ -185,6 +227,7 @@ export function translate(event: RawCliEvent, usage: LlmUsage): LlmStreamEvent |
       return { kind: 'error', code, message };
     }
     default:
+      // system, rate_limit_event, user (tool-result echo), thinking, tool_use — ignored.
       return undefined;
   }
 }
