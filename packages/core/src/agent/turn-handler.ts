@@ -33,6 +33,7 @@ import {
   type ApprovalDecisionRequest,
   type ToolExecResult,
 } from './approval.js';
+import { resolveMode, type DirectiveSet } from './modes.js';
 import type { PreparedTool, ToolExecution, ToolRegistry } from './tool-registry.js';
 import { transitionCodeSuggestion } from './suggestions.js';
 import { toToolResultPart, type NormalizedToolCall } from '../tools/normalizer.js';
@@ -194,7 +195,17 @@ export class AgentTurnHandler {
 
       const backend = this.deps.resolveBackend(req.providerId);
       const model = this.deps.resolveModel(req.providerId);
-      const toolDefs = this.deps.registry.definitions();
+      // Resolve the agent mode ONCE per turn before the loop (T-PRD08, AI
+      // council 2026-06-03; the same trap as guidelines/context: resolving per
+      // iteration could shift the policy mid-loop). A read-only mode
+      // (`!directive.mutates`) does not advertise the mutating tools at all —
+      // the model never sees an editor to call (fork B1); the runtime backstop
+      // in `runOneTool` refuses one anyway if the model emits a stale call from
+      // prior context (fork B3, defense-in-depth).
+      const directive = resolveMode(req.mode);
+      const toolDefs = directive.mutates
+        ? this.deps.registry.definitions()
+        : this.deps.registry.definitions({ mutating: false });
       const maxIterations = req.maxIterations ?? this.deps.maxIterations ?? DEFAULT_MAX_ITERATIONS;
       const maxTokens = this.deps.maxTokens ?? DEFAULT_MAX_TOKENS;
       // Retrieve the scoped context ONCE per turn (fork B1: re-retrieving per
@@ -278,6 +289,7 @@ export class AgentTurnHandler {
               changedFiles,
               codeSuggestions,
               toolCallSeq++,
+              directive,
             ),
           );
         }
@@ -316,6 +328,7 @@ export class AgentTurnHandler {
         iterations,
         cancelled: token.isCancelled,
         stopReason,
+        mode: directive.mode,
         ...(budget ? { budget } : {}),
         ...(turnAnnotations.length ? { annotations: turnAnnotations } : {}),
       };
@@ -419,6 +432,7 @@ export class AgentTurnHandler {
     changedFiles: string[],
     codeSuggestions: CodeSuggestionAnnotation[],
     seq: number,
+    directive: DirectiveSet,
   ): Promise<ContentPart> {
     const emitTool = (ev: ToolCallEvent): void =>
       emit({ messageId, messageType: 'agentTurn', data: { toolEvent: ev }, done: false });
@@ -426,6 +440,23 @@ export class AgentTurnHandler {
     const tool = this.deps.registry.get(call.name);
     if (!tool) {
       const message = `unknown tool: ${call.name}`;
+      emitTool({
+        kind: 'started',
+        id: call.id,
+        name: call.name,
+        argsPreview: previewArgs(call.input),
+      });
+      emitTool({ kind: 'error', id: call.id, message });
+      return toToolResultPart(call, message, true);
+    }
+
+    // Read-only-mode backstop (fork B3): a mutating tool is not advertised in a
+    // read-only mode, but the model can still emit one from prior conversation
+    // context — refuse it here BEFORE any prepare/exec so it never writes. The
+    // message names the mode as a policy (not a transient denial) so the model
+    // stops retrying rather than treating it as a fixable permission error.
+    if (tool.mutates && !directive.mutates) {
+      const message = `edits are not allowed in '${directive.mode}' mode (read-only); ${tool.definition.name} was not run`;
       emitTool({
         kind: 'started',
         id: call.id,

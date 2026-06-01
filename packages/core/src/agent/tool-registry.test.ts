@@ -90,6 +90,7 @@ describe('buildDefaultToolRegistry', () => {
 describe('MapToolRegistry', () => {
   const fakeTool: RegisteredTool = {
     definition: { name: 'fake', description: 'x', input_schema: { type: 'object' } },
+    mutates: false,
     prepare: () =>
       Promise.resolve({
         execute: () => Promise.resolve({ ok: true, output: 'ok', outputPreview: 'ok' }),
@@ -101,5 +102,36 @@ describe('MapToolRegistry', () => {
     expect(registry.get('fake')).toBe(fakeTool);
     expect(registry.get('nope')).toBeUndefined();
     expect(registry.definitions().map((d) => d.name)).toEqual(['fake']);
+  });
+
+  it('omits mutating tools when definitions({ mutating: false }) (T-PRD08 read-only mode)', () => {
+    const writeTool: RegisteredTool = {
+      ...fakeTool,
+      definition: { ...fakeTool.definition, name: 'write_files' },
+      mutates: true,
+    };
+    const registry = new MapToolRegistry([fakeTool, writeTool]);
+    // Default + explicit-true list every tool; the read-only filter drops the mutating one.
+    expect(
+      registry
+        .definitions()
+        .map((d) => d.name)
+        .sort(),
+    ).toEqual(['fake', 'write_files']);
+    expect(
+      registry
+        .definitions({ mutating: true })
+        .map((d) => d.name)
+        .sort(),
+    ).toEqual(['fake', 'write_files']);
+    expect(registry.definitions({ mutating: false }).map((d) => d.name)).toEqual(['fake']);
+  });
+
+  it('the default registry flags write_files as the only mutating tool', () => {
+    const registry = buildDefaultToolRegistry({ workspaceRoot: '/tmp' });
+    expect(registry.get('write_files')?.mutates).toBe(true);
+    for (const name of ['read_file', 'list_dir', 'glob', 'grep']) {
+      expect(registry.get(name)?.mutates).toBe(false);
+    }
   });
 });

@@ -283,6 +283,9 @@ const classes: DataClass[] = [
       { name: 'message', kotlinType: 'String' },
       { name: 'providerId', kotlinType: 'String?', default: 'null' },
       { name: 'maxIterations', kotlinType: 'Int?', default: 'null' },
+      // T-PRD08 — agent mode; omitted = Core default (edit). Read-only modes
+      // forbid file edits. One of ask | edit | plan | review | commit | explain.
+      { name: 'mode', kotlinType: 'String?', default: 'null' },
       // T-MR13 — per-turn retrieval scope, honoured by the agent turn.
       { name: 'scope', kotlinType: 'ContextScope?', default: 'null' },
     ],
@@ -304,6 +307,8 @@ const classes: DataClass[] = [
       { name: 'iterations', kotlinType: 'Int' },
       { name: 'cancelled', kotlinType: 'Boolean' },
       { name: 'stopReason', kotlinType: 'String' },
+      // T-PRD08 — the mode the Core resolved + enforced. Always present.
+      { name: 'mode', kotlinType: 'String' },
       { name: 'budget', kotlinType: 'ChatBudgetStatus?', default: 'null' },
       // Union: T-MR13 context snippets (retrieved) + per-edit code suggestions.
       { name: 'annotations', kotlinType: 'List<Annotation>?', default: 'null' },

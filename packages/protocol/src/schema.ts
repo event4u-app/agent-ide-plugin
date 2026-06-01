@@ -659,6 +659,19 @@ export type ToolCallEvent = z.infer<typeof ToolCallEventSchema>;
 // --- agent turn: chat that edits files (product-readiness) ---------------
 
 /**
+ * Agent modes (T-PRD08). The user picks an explicit mode in the composer; the
+ * Core maps each to a directive set that says whether the turn may write files
+ * (the read-only modes — ask / explain / plan / review / commit — cannot edit;
+ * only `edit` mutates). The enum is the wire owner (single source of truth):
+ * `packages/core/src/agent/modes.ts` imports it rather than redefining it, so
+ * the wire and the directive map can never drift (AI council 2026-06-03, fork
+ * A1). An unknown mode is REJECTED at the boundary, never coerced to a default
+ * — coercing an unrecognised mode to `edit` would silently grant write access.
+ */
+export const AgentModeSchema = z.enum(['ask', 'edit', 'plan', 'review', 'commit', 'explain']);
+export type AgentMode = z.infer<typeof AgentModeSchema>;
+
+/**
  * The agentic chat turn (`agentTurn`) — the seam that lets chat actually run
  * tools and edit files, as opposed to the provider-direct single turn of
  * `chatSend`. The Core runs a bounded LLM↔tool loop: stream the model, surface
@@ -687,6 +700,14 @@ export const AgentTurnRequestSchema = z.object({
   providerId: z.string().min(1).optional(),
   /** Upper bound on LLM↔tool iterations; omitted = the Core default (10). */
   maxIterations: z.number().int().positive().optional(),
+  /**
+   * The agent mode for this turn (T-PRD08); omitted = the Core default (`edit`,
+   * full capability — backward-compatible). Read-only modes (ask / explain /
+   * plan / review / commit) forbid file edits: the Core neither advertises the
+   * `write_files` tool to the model NOR executes one if the model emits it from
+   * stale context. Only `edit` may write.
+   */
+  mode: AgentModeSchema.optional(),
   /**
    * Per-turn retrieval scope; omitted = default (`all`). Honoured by the agent
    * turn (T-MR13) exactly like {@link ChatSendRequestSchema}: the resolved scope
@@ -724,6 +745,13 @@ export const AgentTurnResponseSchema = z.object({
   cancelled: z.boolean(),
   /** `end_turn` · `max_iterations` · `cancelled` · or the model's stop reason. */
   stopReason: z.string(),
+  /**
+   * The mode the Core resolved + enforced for this turn (T-PRD08). Always
+   * present (the turn always resolves one, defaulting to `edit` when the
+   * request omits it) so the IDE can render a definitive "ran in <mode>"
+   * indicator and tell whether edits were possible (only `edit` mutates).
+   */
+  mode: AgentModeSchema,
   /** Daily-budget status after this turn's spend, when a recorder is configured. */
   budget: ChatBudgetStatusSchema.optional(),
   /**
