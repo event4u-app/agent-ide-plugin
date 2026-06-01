@@ -505,6 +505,7 @@ data class ToolCallStarted(
 data class ToolCallApprovalRequested(
     val id: String,
     val level: String,
+    val riskLevel: String,
     val riskReason: String? = null,
     val review: ToolReview? = null,
 ) : ToolCallEvent
