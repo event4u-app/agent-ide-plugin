@@ -1,4 +1,5 @@
 import {
+  AgentTurnRequestSchema,
   type ChatCancelResponse,
   ChatCancelRequestSchema,
   ChatSendRequestSchema,
@@ -22,6 +23,7 @@ import {
   WorkspaceFoldersChangedRequestSchema,
 } from '@event4u-agent/protocol';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
+import type { AgentTurnHandler } from './agent/turn-handler.js';
 import type { ChatHandler, EnvelopeSink } from './chat/handler.js';
 import { type GitHandler, GitRequestError } from './git/handler.js';
 
@@ -48,6 +50,7 @@ export class Dispatcher {
     private readonly coordinator: WorkspaceCoordinator = new WorkspaceCoordinator(),
     private readonly chatHandler?: ChatHandler,
     private readonly gitHandler?: GitHandler,
+    private readonly agentTurnHandler?: AgentTurnHandler,
   ) {
     this.handlers = {
       ping: (): PingResponse => ({ result: 'pong' }),
@@ -68,7 +71,12 @@ export class Dispatcher {
       rootStatus: (): RootStatusResponse => ({ status: this.coordinator.status() }),
       chatCancel: (data: unknown): ChatCancelResponse => {
         const req = ChatCancelRequestSchema.parse(data ?? {});
-        return { cancelled: this.chatHandler?.cancel(req.conversationId) ?? false };
+        // One cancel surface per conversation (AI council fork 7A): a `chatSend`
+        // turn and an `agentTurn` are mutually exclusive per conversationId, so
+        // try both handlers — whichever has the in-flight turn wins.
+        const chatCancelled = this.chatHandler?.cancel(req.conversationId) ?? false;
+        const agentCancelled = this.agentTurnHandler?.cancel(req.conversationId) ?? false;
+        return { cancelled: chatCancelled || agentCancelled };
       },
       gitCommitMessage: (data: unknown): Promise<GitCommitMessageResponse> =>
         this.requireGit().commitMessage(GitCommitMessageRequestSchema.parse(data ?? {})),
@@ -133,6 +141,28 @@ export class Dispatcher {
       try {
         const req = ChatSendRequestSchema.parse(envelope.data ?? {});
         return await this.chatHandler.handleSend(envelope.messageId, req, emit ?? (() => {}));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const code =
+          typeof (error as { code?: unknown }).code === 'string'
+            ? (error as { code: string }).code
+            : 'handler_error';
+        return this.errorEnvelope(envelope.messageId, code, message);
+      }
+    }
+
+    // Streaming method — the agentic tool-loop turn (chat that edits files).
+    if (method === 'agentTurn') {
+      if (!this.agentTurnHandler) {
+        return this.errorEnvelope(
+          envelope.messageId,
+          'agent_not_configured',
+          'No agent-turn handler is configured on this Core instance.',
+        );
+      }
+      try {
+        const req = AgentTurnRequestSchema.parse(envelope.data ?? {});
+        return await this.agentTurnHandler.handleTurn(envelope.messageId, req, emit ?? (() => {}));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const code =

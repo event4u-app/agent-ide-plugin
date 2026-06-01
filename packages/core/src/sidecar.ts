@@ -1,10 +1,13 @@
 import { join } from 'node:path';
+import { buildDefaultToolRegistry } from './agent/tool-registry.js';
+import { AgentTurnHandler } from './agent/turn-handler.js';
 import { ChatHandler } from './chat/handler.js';
 import { FileConversationStore, type ConversationStore } from './chat/store.js';
 import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import { GitHandler } from './git/handler.js';
 import { ProviderRegistry } from './llm/provider-registry.js';
+import { PermissionGate } from './permissions/gate.js';
 import type { PricingBook } from './pricing/loader.js';
 import { PLUGIN_STATE_DIR } from './sessions/locations.js';
 import { Dispatcher } from './server.js';
@@ -76,5 +79,22 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     defaultCwd: cwd,
   });
 
-  return new Dispatcher(new WorkspaceCoordinator(), chatHandler, gitHandler);
+  // Agentic tool-loop turn (chat that edits files). The read tools auto-allow
+  // (gate level `low`); `write_files` requires approval. The IDE approval
+  // round-trip that drives `decide` is an IDE-runtime follow-up, so until it is
+  // wired the default `decide` DENIES every `ask` — the agent can read freely
+  // but never writes unattended. The gate persists "always" grants under the
+  // plugin state dir, matching the audit/cost stores.
+  const agentTurnHandler = new AgentTurnHandler({
+    resolveBackend: (providerId) => registry.resolveBackend(providerId),
+    resolveModel: (providerId) => registry.resolveModel(providerId),
+    store,
+    gate: new PermissionGate({ filePath: join(cwd, PLUGIN_STATE_DIR, 'permissions.json') }),
+    registry: buildDefaultToolRegistry({ workspaceRoot: cwd }),
+    decide: () => Promise.resolve('deny'),
+    pricing: options.pricing,
+    ...(budget ? { budget } : {}),
+  });
+
+  return new Dispatcher(new WorkspaceCoordinator(), chatHandler, gitHandler, agentTurnHandler);
 }
