@@ -10,8 +10,16 @@ import {
   WriteFilesArgsSchema,
   WriteFilesTool,
   writeFilesToolDefinition,
+  type WriteFilesArgs,
   type WriteFilesPlan,
 } from '../tools/write-files.js';
+import {
+  validateEdit,
+  type Diagnostic,
+  type DiagnosticProvider,
+  type SyntaxIssue,
+} from '../tools/validate-edit.js';
+import type { LanguageRegistry } from '../context/languages.js';
 import type { TerminalSessionManager } from '../terminal/manager.js';
 import { buildCodeSuggestions } from './suggestions.js';
 
@@ -129,6 +137,19 @@ export interface BuildToolRegistryOptions {
    * (e.g. unit tests that do not exercise shell) ⇒ no `run_shell` tool.
    */
   terminalManager?: TerminalSessionManager;
+  /**
+   * Optional tree-sitter registry enabling the SYNTAX layer of the post-write
+   * delta-gate (T-702b, AI council 2026-06-01 fork F1). Omitted (unit tests) ⇒
+   * the syntax check is skipped; the leftover-marker layer still runs.
+   */
+  languageRegistry?: LanguageRegistry;
+  /**
+   * Optional diagnostics source (tsc/eslint, IDE-supplied) enabling the
+   * newly-introduced-diagnostics layer of the delta-gate (fork D1). Absent in
+   * the pure sidecar (no native deps, no shelling out) ⇒ that layer is skipped;
+   * the IDE wires a real provider later.
+   */
+  diagnostics?: DiagnosticProvider;
 }
 
 /**
@@ -148,7 +169,11 @@ export function buildDefaultToolRegistry(opts: BuildToolRegistryOptions): ToolRe
     readToolEntry(read.list_dir),
     readToolEntry(read.glob),
     readToolEntry(read.grep),
-    writeFilesEntry(opts.workspaceRoot),
+    writeFilesEntry({
+      workspaceRoot: opts.workspaceRoot,
+      ...(opts.languageRegistry ? { languageRegistry: opts.languageRegistry } : {}),
+      ...(opts.diagnostics ? { diagnostics: opts.diagnostics } : {}),
+    }),
   ];
   if (opts.terminalManager) {
     tools.push(runShellEntry(opts.workspaceRoot, opts.terminalManager));
@@ -178,8 +203,15 @@ function readToolEntry<A>(handler: ToolHandler<A, string>): RegisteredTool {
   };
 }
 
+interface WriteFilesEntryOptions {
+  workspaceRoot: string;
+  languageRegistry?: LanguageRegistry;
+  diagnostics?: DiagnosticProvider;
+}
+
 /** Wrap the multi-file `write_files` tool as a registry entry. */
-function writeFilesEntry(workspaceRoot: string): RegisteredTool {
+function writeFilesEntry(opts: WriteFilesEntryOptions): RegisteredTool {
+  const { workspaceRoot, languageRegistry, diagnostics } = opts;
   return {
     definition: writeFilesToolDefinition,
     mutates: true,
@@ -187,6 +219,16 @@ function writeFilesEntry(workspaceRoot: string): RegisteredTool {
       const args = WriteFilesArgsSchema.parse(input);
       const tool = new WriteFilesTool(workspaceRoot);
       const plan = await tool.propose(args);
+      // The model-generated replacement text per resolved file — the
+      // leftover-marker scan runs on what the model WROTE, never on pre-existing
+      // file content (AI council 2026-06-01 fork C1; append-mode safe).
+      const generated = generatedCodeByFile(args, plan);
+      // Delta-gate baseline (T-702b, fork G): capture diagnostics BEFORE the
+      // write, only when a provider is injected (IDE-supplied; the pure sidecar
+      // has none ⇒ the diff layer reports nothing — fork D1).
+      const baseline = diagnostics
+        ? await diagnostics.diagnostics(plan.files.map((file) => file.path))
+        : [];
       return {
         review: { kind: 'diff', files: plan.files.map(toReviewFile) },
         suggestions: buildCodeSuggestions(plan),
@@ -205,17 +247,108 @@ function writeFilesEntry(workspaceRoot: string): RegisteredTool {
             };
           }
           const applied = plan.files.map((file) => file.path);
-          const output = { applied, unresolved };
+          // Post-write delta-gate (fork A1): the atomic write SUCCEEDED, so the
+          // validation is advisory feedback folded into the tool_result for the
+          // model to self-correct next iteration — it never flips `ok` (fork B1)
+          // and never rolls the write back.
+          const validation = await validatePlan({
+            plan,
+            generated,
+            baseline,
+            ...(languageRegistry ? { languageRegistry } : {}),
+            ...(diagnostics ? { diagnostics } : {}),
+          });
+          const output = { applied, unresolved, ...(validation ? { validation } : {}) };
           return {
             ok: true,
             output,
-            outputPreview: truncate(JSON.stringify(output)),
+            outputPreview: truncate(writeFilesPreview(applied, validation)),
             changedFiles: applied,
           };
         },
       };
     },
   };
+}
+
+/** Newly-introduced issues for one edited file (T-702b, `ok`/file aside). */
+interface FileValidation {
+  file: string;
+  newDiagnostics: Diagnostic[];
+  syntax?: SyntaxIssue;
+  leftover?: string;
+}
+
+interface ValidatePlanInput {
+  plan: WriteFilesPlan;
+  generated: Map<string, string>;
+  baseline: Diagnostic[];
+  languageRegistry?: LanguageRegistry;
+  diagnostics?: DiagnosticProvider;
+}
+
+/**
+ * Run the T-702b delta-gate per applied file and return ONLY the files with
+ * issues (per-file paths preserved so the model knows where to fix — council
+ * multi-file trap), or `undefined` when every file is clean.
+ */
+async function validatePlan(input: ValidatePlanInput): Promise<FileValidation[] | undefined> {
+  const { plan, generated, baseline, languageRegistry, diagnostics } = input;
+  const after = diagnostics
+    ? await diagnostics.diagnostics(plan.files.map((file) => file.path))
+    : [];
+  const problems: FileValidation[] = [];
+  for (const file of plan.files) {
+    const result = await validateEdit(
+      {
+        file: file.path,
+        // Fall back to full content for a file with no resolved generated block
+        // (should not happen for a planned file, but keeps the scan total).
+        newCode: generated.get(file.path) ?? file.newContent,
+        newContent: file.newContent,
+        baseline: baseline.filter((d) => d.file === file.path),
+        after: after.filter((d) => d.file === file.path),
+      },
+      languageRegistry,
+    );
+    if (!result.ok) {
+      problems.push({
+        file: file.path,
+        newDiagnostics: result.newDiagnostics,
+        ...(result.syntax ? { syntax: result.syntax } : {}),
+        ...(result.leftover ? { leftover: result.leftover } : {}),
+      });
+    }
+  }
+  return problems.length > 0 ? problems : undefined;
+}
+
+/** Concatenate the resolved edits' `newCode` per file (fork C1 leftover input). */
+function generatedCodeByFile(args: WriteFilesArgs, plan: WriteFilesPlan): Map<string, string> {
+  const byFile = new Map<string, string>();
+  for (const edit of plan.edits) {
+    if (edit.status !== 'resolved') continue;
+    const code = args.edits[edit.index]?.newCode ?? '';
+    const prior = byFile.get(edit.file);
+    byFile.set(edit.file, prior === undefined ? code : `${prior}\n${code}`);
+  }
+  return byFile;
+}
+
+/** A compact preview line that names the validation issues, if any. */
+function writeFilesPreview(applied: string[], validation?: FileValidation[]): string {
+  const base = JSON.stringify({ applied });
+  if (!validation) return base;
+  const summary = validation
+    .map((v) => {
+      const parts: string[] = [];
+      if (v.leftover) parts.push('leftover marker');
+      if (v.syntax) parts.push('syntax error');
+      if (v.newDiagnostics.length > 0) parts.push(`${v.newDiagnostics.length} new diagnostic(s)`);
+      return `${v.file}: ${parts.join(', ')}`;
+    })
+    .join('; ');
+  return `${base} · validation issues — ${summary}`;
 }
 
 /**
