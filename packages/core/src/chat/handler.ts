@@ -16,6 +16,7 @@ import type {
 import { isAbortError } from '../abort.js';
 import type { BudgetRecorder, BudgetStatus } from '../cost/budget.js';
 import { estimateCost, type CostRange } from '../cost/estimate.js';
+import type { CalibrationLog } from '../cost/reconcile.js';
 import type { LlmBackend } from '../llm/backend.js';
 import { LlmStreamError } from '../llm/backend.js';
 import { CancellationToken } from '../llm/cancellation.js';
@@ -94,6 +95,19 @@ export interface ChatHandlerDeps {
    * (mirrors the estimate gate). Fail-open: a write error never breaks the turn.
    */
   step?: StepRecorder;
+  /**
+   * Optional calibration-drift log (T-706 wiring, ADR-036, AI council
+   * 2026-06-02, UNANIMOUS A0–A6). When set, the handler reconciles the turn's
+   * real cost against the pre-flight estimate at the SAME finalize point as
+   * {@link recordSpend}; a turn whose real cost overruns the estimate's upper
+   * bound by more than the drift threshold appends a calibration event the Cost
+   * Dashboard surfaces (T-707). Only when a pre-flight estimate range was
+   * produced AND the turn was not cancelled (a partial spend is not a fair test
+   * of the estimate — A5). Drift covers both api real cost and cli shadow cost
+   * (A4 — accuracy signal, not a billing event). Fail-open: a write error never
+   * breaks the turn. Absent → no reconciliation (backward-compatible).
+   */
+  calibration?: CalibrationLog;
   /**
    * Optional workspace-guidelines loader (T-1307, AI council 2026-06-01,
    * UNANIMOUS A2/C2/D1/E1/F1). When set, the handler folds the current
@@ -188,7 +202,10 @@ export class ChatHandler {
       // Pre-send estimate (B1): emit BEFORE the first token so the composer can
       // show it while the turn runs. Best-effort — skipped if pricing or a
       // local token count is unavailable, and never allowed to break the turn.
-      await this.maybeEmitEstimate(messageId, request, backend, model, emit);
+      // The range is captured in a TURN-LOCAL (never a handler field) so the
+      // finalize-point reconciliation compares THIS turn's real cost against
+      // THIS turn's estimate — no stale-estimate leakage across reused handlers.
+      const estimateRange = await this.maybeEmitEstimate(messageId, request, backend, model, emit);
 
       let text = '';
       let usage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
@@ -257,6 +274,15 @@ export class ChatHandler {
         cost,
         durationMs: Date.now() - startedAt,
       });
+      // Reconcile real cost vs the pre-flight estimate (T-706). Same finalize
+      // point + once-semantics as recordSpend/recordStep; skips a cancelled
+      // turn and a turn with no estimate; fail-open.
+      await this.maybeReconcile({
+        conversationId: req.conversationId,
+        estimate: estimateRange,
+        cost,
+        cancelled,
+      });
 
       const response: ChatSendResponse = {
         messageId: stored?.id ?? messageId,
@@ -314,9 +340,12 @@ export class ChatHandler {
   }
 
   /**
-   * Emit the pre-send estimate as an early `done:false` envelope. No-op unless
-   * a pricing book, a known model, and a local `countInputTokens` are all
-   * present. Fail-open: any error here is swallowed so the turn still runs.
+   * Emit the pre-send estimate as an early `done:false` envelope AND return the
+   * underlying {@link CostRange} so the finalize point can reconcile the real
+   * cost against it (T-706) without a second `countInputTokens` call (A2).
+   * No-op (→ `undefined`) unless a pricing book, a known model, and a local
+   * `countInputTokens` are all present. Fail-open: any error here is swallowed
+   * (→ `undefined`) so the turn still runs.
    */
   private async maybeEmitEstimate(
     messageId: string,
@@ -324,12 +353,12 @@ export class ChatHandler {
     backend: LlmBackend,
     model: string,
     emit: EnvelopeSink,
-  ): Promise<void> {
+  ): Promise<CostRange | undefined> {
     const pricing = this.deps.pricing;
-    if (!pricing || !pricing.getModel(model) || !backend.countInputTokens) return;
+    if (!pricing || !pricing.getModel(model) || !backend.countInputTokens) return undefined;
     try {
       const inputTokens = await backend.countInputTokens(request);
-      if (inputTokens === undefined) return;
+      if (inputTokens === undefined) return undefined;
       const range = estimateCost(pricing, {
         model,
         inputTokens,
@@ -337,8 +366,40 @@ export class ChatHandler {
       });
       const estimate: ChatEstimate = toWireEstimate(range);
       emit({ messageId, messageType: 'chatSend', data: { estimate }, done: false });
+      return range;
     } catch {
       // Best-effort: a failed estimate must never break the turn.
+      return undefined;
+    }
+  }
+
+  /**
+   * Reconcile the turn's real cost against its pre-flight estimate (T-706,
+   * ADR-036, AI council 2026-06-02, UNANIMOUS A0–A6). No-op unless a
+   * {@link CalibrationLog} is injected AND a pre-flight estimate range was
+   * produced for this turn. A CANCELLED turn is skipped — its partial spend is
+   * not a fair test of the estimate (A5). The raw `cost.totalUsd` is used
+   * regardless of `isEstimate`, so cli shadow cost is reconciled too: drift is
+   * a heuristic-accuracy signal, not a billing event (A4). The log itself only
+   * appends an event when real cost overruns the estimate's upper bound by more
+   * than its drift threshold. Fail-open: a write error never breaks the turn.
+   */
+  private async maybeReconcile(input: {
+    conversationId: string;
+    estimate: CostRange | undefined;
+    cost: ChatCost;
+    cancelled: boolean;
+  }): Promise<void> {
+    const log = this.deps.calibration;
+    if (!log || !input.estimate || input.cancelled) return;
+    try {
+      await log.reconcile({
+        conversationId: input.conversationId,
+        estimate: input.estimate,
+        realUsd: input.cost.totalUsd,
+      });
+    } catch {
+      // Best-effort: a calibration write must never break the turn.
     }
   }
 

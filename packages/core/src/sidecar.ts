@@ -4,6 +4,7 @@ import { AgentTurnHandler } from './agent/turn-handler.js';
 import { ChatHandler } from './chat/handler.js';
 import { FileConversationStore, type ConversationStore } from './chat/store.js';
 import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
+import { CalibrationLog } from './cost/reconcile.js';
 import { DefaultCostReporter, type CostReporter } from './cost/report.js';
 import { TrackingDb } from './tracking/db.js';
 import type { StepRecorder } from './tracking/step-recorder.js';
@@ -65,6 +66,13 @@ export interface BuildCoreOptions {
    */
   costReporter?: CostReporter;
   /**
+   * Calibration-drift log override (tests). Defaults to a {@link CalibrationLog}
+   * under the SAME `<cwd>/<state>/tracking` dir as the step trail (T-706 wiring,
+   * ADR-036); the chat handler reconciles each turn's real cost against its
+   * pre-flight estimate and appends a calibration event on over-threshold drift.
+   */
+  calibration?: CalibrationLog;
+  /**
    * Workspace-guidelines store override (tests). Defaults to a
    * {@link FileGuidelinesStore} at `<cwd>/.event4u-agent` (reads
    * `guidelines.md`). Both turn handlers fold its content into the per-turn
@@ -102,6 +110,12 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   const tracking = new TrackingDb({ baseDir: join(cwd, PLUGIN_STATE_DIR, 'tracking') });
   const step = options.step ?? tracking;
   const costReporter = options.costReporter ?? new DefaultCostReporter(tracking, options.pricing);
+  // Calibration-drift reconciliation (T-706 wiring, ADR-036). Same `tracking`
+  // dir as the step trail — both are the Cost Dashboard's append-only backend
+  // (T-707). The chat handler reconciles real-vs-estimate at the finalize point;
+  // no I/O until an over-threshold turn appends an event.
+  const calibration =
+    options.calibration ?? new CalibrationLog({ baseDir: join(cwd, PLUGIN_STATE_DIR, 'tracking') });
 
   // One coordinator instance drives BOTH the dispatcher's workspace lifecycle
   // and the chat handler's scoped retrieval (T-MR13) — they MUST share state so
@@ -120,6 +134,7 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
       coordinator.retrieveContextSnippets(query, CONTEXT_TOP_K, scope, signal),
     ...(budget ? { budget } : {}),
     step,
+    calibration,
   });
 
   // Git-loop handler — shares the registry; the diff/log are read from the
