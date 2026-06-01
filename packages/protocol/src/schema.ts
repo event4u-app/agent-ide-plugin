@@ -175,6 +175,10 @@ export type ContextScope = z.infer<typeof ContextScopeSchema>;
  *   - `code-suggestion`: SweepAI `CodeMirrorSuggestionEditor` per-edit state
  *     machine (pending|processing|done|error). The editor render + per-suggestion
  *     stage/apply affordance stay IDE-deferred.
+ *   - `status-row`: SweepAI "progress strings are first-class stream items" —
+ *     one row per long-operation step (agent phase, or a non-phase op like
+ *     indexing) with a pending|active|done|error lifecycle. The progress-bar /
+ *     spinner render + live streaming stay IDE-deferred.
  */
 
 /**
@@ -241,9 +245,55 @@ export const CodeSuggestionAnnotationSchema = z.object({
 });
 export type CodeSuggestionAnnotation = z.infer<typeof CodeSuggestionAnnotationSchema>;
 
+/**
+ * Lifecycle of one status row (the SweepAI "progress strings are first-class
+ * stream items" surface, ported to the durable message model). `pending` = not
+ * started; `active` = the in-flight step; `done` = finished; `error` = failed.
+ * Core owns every transition (see `transitionStatusRow` in `@event4u-agent/core`);
+ * the wire carries only the current value as a flat enum so VS Code and JetBrains
+ * stay thin renderers (AI council 2026-06-01, C1 `active` over reusing
+ * code-suggestion's edit-specific `processing`).
+ */
+export const StatusRowStateSchema = z.enum(['pending', 'active', 'done', 'error']);
+export type StatusRowState = z.infer<typeof StatusRowStateSchema>;
+
+/**
+ * Optional agent-pipeline phase a status row tracks, when it tracks one — the
+ * five runnable phases (`done` is the driver-complete sentinel, never a row).
+ * Carried on the wire so the IDE picks a phase icon deterministically (mirrors
+ * `category` → colour on context-snippet). Omitted for non-phase long operations
+ * such as background indexing (AI council 2026-06-01: optional `phase` resolves
+ * the codex B1 / gemini B2 split — a generic builder, phase-keyed icons when known).
+ */
+export const StatusRowPhaseSchema = z.enum(['refine', 'plan', 'implement', 'verify', 'report']);
+export type StatusRowPhase = z.infer<typeof StatusRowPhaseSchema>;
+
+/**
+ * One progress row riding on the assistant turn that produced it. Durable
+ * (re-rendered deterministically from the message), distinct from the transient
+ * {@link ToolCallEventSchema}/{@link TerminalEventSchema} streams (AI council A1:
+ * the row state lives on the message; live streaming + the spinner render are the
+ * IDE last-mile). `detail` carries the optional progress string ("Indexing
+ * 4,238 / 21,500 files…") or, in the `error` state, the failure reason.
+ */
+export const StatusRowAnnotationSchema = z.object({
+  kind: z.literal('status-row'),
+  /** Stable per-turn id the reducer reconciles transient updates against. */
+  statusId: z.string().min(1),
+  /** Human-readable row text (e.g. "Implement"). */
+  label: z.string(),
+  state: StatusRowStateSchema,
+  /** The pipeline phase this row tracks, when it tracks one. */
+  phase: StatusRowPhaseSchema.optional(),
+  /** Optional progress string, or the failure reason in the `error` state. */
+  detail: z.string().optional(),
+});
+export type StatusRowAnnotation = z.infer<typeof StatusRowAnnotationSchema>;
+
 export const AnnotationSchema = z.discriminatedUnion('kind', [
   ContextSnippetAnnotationSchema,
   CodeSuggestionAnnotationSchema,
+  StatusRowAnnotationSchema,
 ]);
 export type Annotation = z.infer<typeof AnnotationSchema>;
 
