@@ -1,11 +1,18 @@
 import type { CodeSuggestionAnnotation, ToolDefinition, ToolReview } from '@event4u-agent/protocol';
 import { makeReadTools, type ToolHandler } from '../tools/read-tools.js';
 import {
+  RunShellArgsSchema,
+  RunShellTool,
+  runShellToolDefinition,
+  type RunShellResult,
+} from '../tools/run-shell.js';
+import {
   WriteFilesArgsSchema,
   WriteFilesTool,
   writeFilesToolDefinition,
   type WriteFilesPlan,
 } from '../tools/write-files.js';
+import type { TerminalSessionManager } from '../terminal/manager.js';
 import { buildCodeSuggestions } from './suggestions.js';
 
 /**
@@ -114,25 +121,39 @@ export interface BuildToolRegistryOptions {
   workspaceRoot: string;
   /** Override the filesystem walk for the read tools (unit tests). */
   walk?: (dir: string) => Promise<string[]>;
+  /**
+   * Shared terminal session manager. When provided, the mutating `run_shell`
+   * tool is registered and spawns into THIS manager — the same one the
+   * `terminalSubscribe` handler reads, so a chat-spawned command streams into
+   * the IDE terminal panel end-to-end (AI council 2026-06-01 fork A1). Omitted
+   * (e.g. unit tests that do not exercise shell) ⇒ no `run_shell` tool.
+   */
+  terminalManager?: TerminalSessionManager;
 }
 
 /**
  * The production tool set: the four read tools (`read_file`, `list_dir`,
- * `glob`, `grep` — gate level `low`, auto-allowed) and the `write_files`
- * editor (gate level `requires_approval`, gated through the approval flow).
+ * `glob`, `grep` — gate level `low`, auto-allowed), the `write_files` editor
+ * and the `run_shell` command runner (both gate level `requires_approval`,
+ * gated through the approval flow). `run_shell` is registered only when a
+ * shared terminal manager is supplied.
  */
 export function buildDefaultToolRegistry(opts: BuildToolRegistryOptions): ToolRegistry {
   const read = makeReadTools({
     workspaceRoot: opts.workspaceRoot,
     ...(opts.walk ? { walk: opts.walk } : {}),
   });
-  return new MapToolRegistry([
+  const tools: RegisteredTool[] = [
     readToolEntry(read.read_file),
     readToolEntry(read.list_dir),
     readToolEntry(read.glob),
     readToolEntry(read.grep),
     writeFilesEntry(opts.workspaceRoot),
-  ]);
+  ];
+  if (opts.terminalManager) {
+    tools.push(runShellEntry(opts.workspaceRoot, opts.terminalManager));
+  }
+  return new MapToolRegistry(tools);
 }
 
 /** Wrap a read-only {@link ToolHandler} (string output) as a registry entry. */
@@ -195,6 +216,40 @@ function writeFilesEntry(workspaceRoot: string): RegisteredTool {
       };
     },
   };
+}
+
+/**
+ * Wrap the `run_shell` command runner as a registry entry. `mutates: true`
+ * routes it through approval and filters it out of read-only agent modes; the
+ * approval card shows the command via the default `argsPreview` (a structured
+ * shell-review payload is the deferred IDE-render follow-up, see ADR-030).
+ */
+function runShellEntry(workspaceRoot: string, manager: TerminalSessionManager): RegisteredTool {
+  return {
+    definition: runShellToolDefinition,
+    mutates: true,
+    async prepare(input: unknown): Promise<PreparedTool> {
+      const args = RunShellArgsSchema.parse(input);
+      const tool = new RunShellTool({ manager, workspaceRoot });
+      return {
+        async execute(signal?: AbortSignal): Promise<ToolExecution> {
+          const result = await tool.run(args, signal);
+          const ok = result.status === 'exited' && result.exitCode === 0;
+          return { ok, output: result, outputPreview: truncate(runShellPreview(result)) };
+        },
+      };
+    },
+  };
+}
+
+function runShellPreview(result: RunShellResult): string {
+  const head =
+    result.status === 'exited'
+      ? `exit ${result.exitCode}`
+      : result.status === 'error'
+        ? `error: ${result.message ?? ''}`
+        : result.status;
+  return result.outputTail ? `[${head}]\n${result.outputTail}` : `[${head}]`;
 }
 
 function toReviewFile(file: WriteFilesPlan['files'][number]): ToolReview['files'][number] {

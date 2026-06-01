@@ -3,6 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildDefaultToolRegistry, MapToolRegistry, type RegisteredTool } from './tool-registry.js';
+import { TerminalSessionManager } from '../terminal/manager.js';
+import type { FakeTerminal } from '../terminal/pty.js';
+import type { RunShellResult } from '../tools/run-shell.js';
 
 async function tempWorkspace(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'tool-registry-'));
@@ -84,6 +87,61 @@ describe('buildDefaultToolRegistry', () => {
     // call "succeeds" with a message the model can read and react to.
     expect(typeof result.output).toBe('string');
     expect(result.changedFiles).toBeUndefined();
+  });
+
+  it('registers run_shell as a mutating tool ONLY when a terminal manager is given', async () => {
+    const root = await tempWorkspace();
+    const withoutShell = buildDefaultToolRegistry({ workspaceRoot: root });
+    expect(withoutShell.get('run_shell')).toBeUndefined();
+
+    const withShell = buildDefaultToolRegistry({
+      workspaceRoot: root,
+      terminalManager: new TerminalSessionManager(),
+    });
+    expect(withShell.get('run_shell')?.mutates).toBe(true);
+    // Mutating → filtered out of a read-only agent mode.
+    expect(withShell.definitions({ mutating: false }).map((d) => d.name)).not.toContain(
+      'run_shell',
+    );
+  });
+
+  it('run_shell spawns into the shared manager and returns the run result on exit', async () => {
+    const root = await tempWorkspace();
+    const manager = new TerminalSessionManager();
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root, terminalManager: manager });
+    const prepared = await registry.get('run_shell')!.prepare({ command: 'echo', args: ['hi'] });
+    // No diff review for a shell command (the command shows via argsPreview).
+    expect(prepared.review).toBeUndefined();
+
+    const execution = prepared.execute();
+    // The session is live in the SHARED manager — the terminalSubscribe path
+    // would see it (end-to-end). Drive the Fake terminal to completion.
+    const session = manager.list()[0]!;
+    const fake = session.terminal as FakeTerminal;
+    fake.emit('hi\n');
+    fake.emitExit({ exitCode: 0 });
+
+    const result = await execution;
+    expect(result.ok).toBe(true);
+    expect(result.changedFiles).toBeUndefined();
+    const output = result.output as RunShellResult;
+    expect(output.status).toBe('exited');
+    expect(output.outputTail).toBe('hi');
+    expect(result.outputPreview).toContain('exit 0');
+  });
+
+  it('run_shell reports a failed command as not-ok with the output in the result', async () => {
+    const root = await tempWorkspace();
+    const manager = new TerminalSessionManager();
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root, terminalManager: manager });
+    const prepared = await registry.get('run_shell')!.prepare({ command: 'false' });
+    const execution = prepared.execute();
+    const fake = manager.list()[0]!.terminal as FakeTerminal;
+    fake.emit('boom\n');
+    fake.emitExit({ exitCode: 2 });
+    const result = await execution;
+    expect(result.ok).toBe(false);
+    expect((result.output as RunShellResult).exitCode).toBe(2);
   });
 });
 

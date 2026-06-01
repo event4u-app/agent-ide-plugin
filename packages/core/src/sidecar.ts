@@ -104,18 +104,26 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     defaultCwd: cwd,
   });
 
+  // One terminal session manager, shared between the `run_shell` agent tool
+  // (the spawn path) and the `terminalSubscribe` handler (the read path), so a
+  // chat-spawned command streams into the IDE terminal panel end-to-end (AI
+  // council 2026-06-01 fork A1). The real env-gated `node-pty` factory and the
+  // xterm.js renderers stay native-/IDE-gated; with the default Fake terminal
+  // the manager holds no real PTYs until a tool starts one.
+  const terminalManager = new TerminalSessionManager();
+
   // Agentic tool-loop turn (chat that edits files). The read tools auto-allow
-  // (gate level `low`); `write_files` requires approval. The IDE approval
-  // round-trip that drives `decide` is an IDE-runtime follow-up, so until it is
-  // wired the default `decide` DENIES every `ask` — the agent can read freely
-  // but never writes unattended. The gate persists "always" grants under the
-  // plugin state dir, matching the audit/cost stores.
+  // (gate level `low`); `write_files` and `run_shell` require approval. The IDE
+  // approval round-trip that drives `decide` is an IDE-runtime follow-up, so
+  // until it is wired the default `decide` DENIES every `ask` — the agent can
+  // read freely but never writes/runs unattended. The gate persists "always"
+  // grants under the plugin state dir, matching the audit/cost stores.
   const agentTurnHandler = new AgentTurnHandler({
     resolveBackend: (providerId) => registry.resolveBackend(providerId),
     resolveModel: (providerId) => registry.resolveModel(providerId),
     store,
     gate: new PermissionGate({ filePath: join(cwd, PLUGIN_STATE_DIR, 'permissions.json') }),
-    registry: buildDefaultToolRegistry({ workspaceRoot: cwd }),
+    registry: buildDefaultToolRegistry({ workspaceRoot: cwd, terminalManager }),
     decide: () => Promise.resolve('deny'),
     pricing: options.pricing,
     loadGuidelines,
@@ -126,11 +134,9 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     ...(budget ? { budget } : {}),
   });
 
-  // Live-terminal handler (T-PRD03). The manager owns the session map; the
-  // spawn path that populates it (a future `run_shell` agent tool) and the real
-  // env-gated `node-pty` factory stay native-/IDE-gated, so until they land the
-  // manager defaults to the deterministic Fake terminal and holds no sessions.
-  const terminalHandler = new TerminalHandler({ manager: new TerminalSessionManager() });
+  // Live-terminal handler (T-PRD03) — the read path over the SAME manager the
+  // `run_shell` tool spawns into.
+  const terminalHandler = new TerminalHandler({ manager: terminalManager });
 
   return new Dispatcher(coordinator, chatHandler, gitHandler, agentTurnHandler, terminalHandler);
 }
