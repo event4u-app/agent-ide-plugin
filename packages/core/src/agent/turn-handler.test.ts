@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -457,5 +457,164 @@ describe('AgentTurnHandler — scoped context retrieval (T-MR13)', () => {
 
     await expect(run(handler, {})).rejects.toThrow('aborted');
     expect(handler.isActive('c1')).toBe(false);
+  });
+});
+
+describe('AgentTurnHandler — code-suggestion annotations', () => {
+  it('folds an applied edit onto the turn as a `done` suggestion', async () => {
+    const root = await tempWorkspace();
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root });
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry,
+        resolveBackend: () =>
+          scriptedBackend(
+            writeThenDone({ edits: [{ file: 'note.txt', originalCode: '', newCode: 'hi\n' }] }),
+          ),
+      }),
+    );
+
+    const terminal = await handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'create note.txt' },
+      () => {},
+    );
+    const res = terminal.data as AgentTurnResponse;
+
+    expect(res.annotations).toHaveLength(1);
+    expect(res.annotations?.[0]).toMatchObject({
+      kind: 'code-suggestion',
+      // Namespaced by the per-call ordinal so multiple write_files never collide.
+      suggestionId: 'call0-edit-0',
+      filePath: 'note.txt',
+      state: 'done',
+    });
+  });
+
+  it('marks a denied edit as `error` (Denied by user) and writes nothing', async () => {
+    const root = await tempWorkspace();
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root });
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry,
+        decide: () => Promise.resolve('deny'),
+        resolveBackend: () =>
+          scriptedBackend(
+            writeThenDone({ edits: [{ file: 'denied.txt', originalCode: '', newCode: 'x' }] }),
+          ),
+      }),
+    );
+
+    const terminal = await handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'edit' },
+      () => {},
+    );
+    const res = terminal.data as AgentTurnResponse;
+
+    expect(res.annotations?.[0]).toMatchObject({
+      suggestionId: 'call0-edit-0',
+      state: 'error',
+      errorMessage: 'Denied by user',
+    });
+  });
+
+  it('keeps an unresolved edit as a terminal `error` even when the call runs', async () => {
+    const root = await tempWorkspace();
+    await writeFile(join(root, 'b.txt'), 'real content', 'utf8');
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root });
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry,
+        resolveBackend: () =>
+          scriptedBackend(
+            writeThenDone({
+              edits: [{ file: 'b.txt', originalCode: 'NOT PRESENT', newCode: 'x' }],
+            }),
+          ),
+      }),
+    );
+
+    const terminal = await handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'edit' },
+      () => {},
+    );
+    const res = terminal.data as AgentTurnResponse;
+
+    expect(res.annotations?.[0]?.state).toBe('error');
+    expect(res.changedFiles).toEqual([]);
+  });
+
+  it('namespaces ids per call so multiple write_files turns never collide', async () => {
+    const root = await tempWorkspace();
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root });
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry,
+        resolveBackend: () =>
+          scriptedBackend([
+            [
+              { kind: 'tool_use_start', id: 'a', name: 'write_files' },
+              {
+                kind: 'tool_use_input_delta',
+                id: 'a',
+                json_delta: JSON.stringify({
+                  edits: [{ file: 'one.txt', originalCode: '', newCode: '1\n' }],
+                }),
+              },
+              { kind: 'tool_use_end', id: 'a', name: 'write_files', input: undefined },
+              { kind: 'stop', reason: 'tool_use', usage: USAGE },
+            ],
+            [
+              { kind: 'tool_use_start', id: 'b', name: 'write_files' },
+              {
+                kind: 'tool_use_input_delta',
+                id: 'b',
+                json_delta: JSON.stringify({
+                  edits: [{ file: 'two.txt', originalCode: '', newCode: '2\n' }],
+                }),
+              },
+              { kind: 'tool_use_end', id: 'b', name: 'write_files', input: undefined },
+              { kind: 'stop', reason: 'tool_use', usage: USAGE },
+            ],
+            [
+              { kind: 'text_delta', text: 'Done.' },
+              { kind: 'stop', reason: 'end_turn', usage: USAGE },
+            ],
+          ]),
+      }),
+    );
+
+    const terminal = await handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'two edits' },
+      () => {},
+    );
+    const res = terminal.data as AgentTurnResponse;
+
+    expect(res.annotations?.map((a) => a.suggestionId)).toEqual(['call0-edit-0', 'call1-edit-0']);
+    expect(res.annotations?.every((a) => a.state === 'done')).toBe(true);
+  });
+
+  it('omits annotations on a turn that proposes no edits', async () => {
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry: buildDefaultToolRegistry({ workspaceRoot: '/tmp' }),
+        resolveBackend: () =>
+          scriptedBackend([
+            [
+              { kind: 'text_delta', text: 'No edits needed.' },
+              { kind: 'stop', reason: 'end_turn', usage: USAGE },
+            ],
+          ]),
+      }),
+    );
+    const terminal = await handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'hi' },
+      () => {},
+    );
+    expect((terminal.data as AgentTurnResponse).annotations).toBeUndefined();
   });
 });

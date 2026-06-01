@@ -1,4 +1,4 @@
-import type { ToolDefinition, ToolReview } from '@event4u-agent/protocol';
+import type { CodeSuggestionAnnotation, ToolDefinition, ToolReview } from '@event4u-agent/protocol';
 import { makeReadTools, type ToolHandler } from '../tools/read-tools.js';
 import {
   WriteFilesArgsSchema,
@@ -6,6 +6,7 @@ import {
   writeFilesToolDefinition,
   type WriteFilesPlan,
 } from '../tools/write-files.js';
+import { buildCodeSuggestions } from './suggestions.js';
 
 /**
  * Tool registry for the agentic chat turn (AI council 2026-06-01, fork 3A).
@@ -39,6 +40,14 @@ export interface ToolExecution {
 export interface PreparedTool {
   /** Optional approval-review payload (e.g. a multi-file diff) shown before exec. */
   review?: ToolReview;
+  /**
+   * Optional durable `code-suggestion` annotations for the edits this call
+   * proposes, in `edits` order (built from the resolved plan at prepare time).
+   * The {@link AgentTurnHandler} namespaces the ids per call, drives them to a
+   * terminal state from the execution outcome, and folds them onto the turn
+   * response. Read-only tools leave it unset.
+   */
+  suggestions?: CodeSuggestionAnnotation[];
   /** Execute the prepared work. Receives the turn's abort signal. */
   execute(signal?: AbortSignal): Promise<ToolExecution>;
 }
@@ -135,6 +144,7 @@ function writeFilesEntry(workspaceRoot: string): RegisteredTool {
       const plan = await tool.propose(args);
       return {
         review: { kind: 'diff', files: plan.files.map(toReviewFile) },
+        suggestions: buildCodeSuggestions(plan),
         async execute(): Promise<ToolExecution> {
           // `apply` is atomic: an unresolved edit refuses the whole batch and
           // writes nothing, so `changedFiles`/`applied` reflect actual writes.

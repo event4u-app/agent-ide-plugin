@@ -40,6 +40,17 @@ describe('buildDefaultToolRegistry', () => {
     expect(prepared.review?.files[0]?.path).toBe('note.txt');
     expect(prepared.review?.files[0]?.isNewFile).toBe(true);
 
+    // The prepared tool also exposes durable code-suggestion annotations built
+    // from the resolved plan — one per edit, `pending` for a resolved edit.
+    expect(prepared.suggestions).toHaveLength(1);
+    expect(prepared.suggestions?.[0]).toMatchObject({
+      kind: 'code-suggestion',
+      suggestionId: 'edit-0',
+      filePath: 'note.txt',
+      state: 'pending',
+    });
+    expect(prepared.suggestions?.[0]?.diffPreview).toContain('created');
+
     const result = await prepared.execute();
     expect(result.ok).toBe(true);
     expect(result.changedFiles).toEqual(['note.txt']);
@@ -53,6 +64,10 @@ describe('buildDefaultToolRegistry', () => {
     const prepared = await registry.get('write_files')!.prepare({
       edits: [{ file: 'b.txt', originalCode: 'NOT PRESENT', newCode: 'x' }],
     });
+    // An unresolved edit yields a terminal `error` suggestion carrying the
+    // locate diagnostic and an empty diff preview.
+    expect(prepared.suggestions?.[0]?.state).toBe('error');
+    expect(prepared.suggestions?.[0]?.diffPreview).toBe('');
     const result = await prepared.execute();
     // The edit did not resolve, so no file is in changedFiles, but exec still
     // returns a structured summary the model can act on.
