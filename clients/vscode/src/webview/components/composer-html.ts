@@ -6,6 +6,8 @@ export interface ComposerInitial {
   modelId: string;
   models: Array<{ id: string; priceLabel: string }>;
   sidecarHealthy: boolean;
+  /** Active provider can serve a turn — drives the green/red status dot. */
+  providerAvailable: boolean;
   streaming: boolean;
 }
 
@@ -18,11 +20,12 @@ export interface ComposerInitial {
  * Twin of `clients/jetbrains/src/main/kotlin/de/event4u/agent/ui/Composer.kt`.
  */
 export function composerHtml(initial: ComposerInitial): string {
-  const modeClass = initial.streaming
-    ? 'e4u-mode-pill--streaming'
-    : !initial.sidecarHealthy
+  const modeClass =
+    !initial.sidecarHealthy || !initial.providerAvailable
       ? 'e4u-mode-pill--error'
-      : 'e4u-mode-pill--ready';
+      : initial.streaming
+        ? 'e4u-mode-pill--streaming'
+        : 'e4u-mode-pill--ready';
   return `<form class="e4u-composer" id="e4u-composer">
     <div class="e4u-composer__chips" id="e4u-chips">
       <button type="button" class="e4u-chip" data-action="open-mention" title="Insert @-mention">@</button>

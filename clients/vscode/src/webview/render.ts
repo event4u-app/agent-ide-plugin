@@ -109,7 +109,9 @@ function truncate(text: string, max: number): string {
 }
 
 function statusClass(snapshot: ChatModelSnapshot): string {
-  if (!snapshot.sidecarHealthy) return 'e4u-status--error';
+  // Red when the turn cannot run: sidecar down OR the active provider is
+  // unavailable (CLI binary missing / API key absent). Green = ready to serve.
+  if (!snapshot.sidecarHealthy || !snapshot.providerAvailable) return 'e4u-status--error';
   if (snapshot.streamingSummary !== null) return 'e4u-status--streaming';
   return 'e4u-status--ready';
 }

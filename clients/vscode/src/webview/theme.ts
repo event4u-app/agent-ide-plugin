@@ -63,8 +63,8 @@ export function themeCss(): string {
       --e4u-border: var(--vscode-panel-border, var(--vscode-input-border));
       --e4u-accent: var(--vscode-button-background);
       --e4u-accent-fg: var(--vscode-button-foreground);
-      --e4u-status-ready: var(--vscode-charts-blue, #4af);
-      --e4u-status-streaming: var(--vscode-charts-green, #4caf50);
+      --e4u-status-ready: var(--vscode-charts-green, #4caf50);
+      --e4u-status-streaming: var(--vscode-charts-blue, #4af);
       --e4u-status-error: var(--vscode-charts-red, #c84646);
     }
     body { margin: 0; padding: 0; font-family: var(--vscode-font-family, sans-serif); color: var(--e4u-text); background: var(--e4u-surface); }

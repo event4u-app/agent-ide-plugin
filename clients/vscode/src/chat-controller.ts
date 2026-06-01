@@ -33,12 +33,20 @@ export class ChatController {
   private streamingSummary: ChatModelSnapshot['streamingSummary'] = null;
   /** The assistant message id currently streaming — guards against stale frames. */
   private activeId: string | undefined;
+  /** Whether the active provider can serve a turn — corrected by the probe. */
+  private providerAvailable = true;
 
   constructor(
     private readonly sidecar: Pick<SidecarClient, 'requestStream' | 'request'>,
     private readonly webview: WebviewLike,
     private readonly sidecarHealthy: boolean,
     mode: ConversationMode = 'api',
+    /**
+     * Probe whether `mode`'s provider can serve a turn. Injected by the host
+     * (extension.ts spawns `claude --version` for CLI, checks the key for API).
+     * Absent (tests) → availability stays optimistic.
+     */
+    private readonly probeAvailability?: (mode: ConversationMode) => boolean | Promise<boolean>,
   ) {
     this.mode = mode;
   }
@@ -49,6 +57,7 @@ export class ChatController {
       mode: this.mode,
       streamingSummary: this.streamingSummary,
       sidecarHealthy: this.sidecarHealthy,
+      providerAvailable: this.providerAvailable,
     };
   }
 
@@ -57,6 +66,7 @@ export class ChatController {
     switch (message?.kind) {
       case 'ready':
         this.push();
+        void this.refreshAvailability();
         break;
       case 'send':
         if (typeof message.text === 'string') void this.send(message.text);
@@ -67,6 +77,7 @@ export class ChatController {
       case 'toggle-mode':
         this.mode = this.mode === 'api' ? 'cli' : 'api';
         this.push();
+        void this.refreshAvailability();
         break;
       default:
         break;
@@ -75,6 +86,23 @@ export class ChatController {
 
   private push(): void {
     void this.webview.postMessage({ kind: 'snapshot', snapshot: this.snapshot() });
+  }
+
+  /** Re-probe the active provider's availability and push the corrected dot. */
+  private async refreshAvailability(): Promise<void> {
+    if (!this.probeAvailability) return;
+    try {
+      const available = await this.probeAvailability(this.mode);
+      if (available === this.providerAvailable) return;
+      this.providerAvailable = available;
+      this.push();
+    } catch {
+      // A failed probe is treated as "unavailable" so the dot warns rather than lies.
+      if (this.providerAvailable) {
+        this.providerAvailable = false;
+        this.push();
+      }
+    }
   }
 
   /** API mode → sidecar default provider; CLI mode → the keyless claude-cli backend. */
