@@ -4,6 +4,9 @@ import { AgentTurnHandler } from './agent/turn-handler.js';
 import { ChatHandler } from './chat/handler.js';
 import { FileConversationStore, type ConversationStore } from './chat/store.js';
 import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
+import { DefaultCostReporter, type CostReporter } from './cost/report.js';
+import { TrackingDb } from './tracking/db.js';
+import type { StepRecorder } from './tracking/step-recorder.js';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import { LanguageRegistry } from './context/languages.js';
 import { FileGuidelinesStore, type GuidelinesStore } from './guidelines/guidelines.js';
@@ -50,6 +53,18 @@ export interface BuildCoreOptions {
   /** Budget recorder override (tests). Takes precedence over `cost`. */
   budget?: BudgetRecorder;
   /**
+   * Step-event recorder override (tests). Defaults to a {@link TrackingDb} under
+   * `<cwd>/<state>/tracking`; both turn handlers persist one priced step per
+   * turn to it (T-408 wiring, ADR-035). Recording no-ops without a pricing book.
+   */
+  step?: StepRecorder;
+  /**
+   * Cost reporter override (tests). Defaults to a {@link DefaultCostReporter}
+   * over the same tracking trail + pricing book, answering the `costReport`
+   * read method (T-707 backend).
+   */
+  costReporter?: CostReporter;
+  /**
    * Workspace-guidelines store override (tests). Defaults to a
    * {@link FileGuidelinesStore} at `<cwd>/.event4u-agent` (reads
    * `guidelines.md`). Both turn handlers fold its content into the per-turn
@@ -79,6 +94,15 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
         })
       : undefined);
 
+  // Live step-event tracking (T-408 wiring, ADR-035). One TrackingDb under the
+  // plugin state dir feeds BOTH sides of the cost data path: the turn handlers
+  // write a priced step per turn (`step`), and the cost reporter reads the same
+  // trail to answer `costReport` (the Cost Dashboard backend, T-707). Cheap to
+  // construct (no I/O until a read/write); recording no-ops without pricing.
+  const tracking = new TrackingDb({ baseDir: join(cwd, PLUGIN_STATE_DIR, 'tracking') });
+  const step = options.step ?? tracking;
+  const costReporter = options.costReporter ?? new DefaultCostReporter(tracking, options.pricing);
+
   // One coordinator instance drives BOTH the dispatcher's workspace lifecycle
   // and the chat handler's scoped retrieval (T-MR13) — they MUST share state so
   // a turn retrieves against the same live index the connect handshake built.
@@ -95,6 +119,7 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     retrieveContext: (query, scope, signal) =>
       coordinator.retrieveContextSnippets(query, CONTEXT_TOP_K, scope, signal),
     ...(budget ? { budget } : {}),
+    step,
   });
 
   // Git-loop handler — shares the registry; the diff/log are read from the
@@ -141,11 +166,22 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     retrieveContext: (query, scope, signal) =>
       coordinator.retrieveContextSnippets(query, CONTEXT_TOP_K, scope, signal),
     ...(budget ? { budget } : {}),
+    step,
   });
 
   // Live-terminal handler (T-PRD03) — the read path over the SAME manager the
   // `run_shell` tool spawns into.
   const terminalHandler = new TerminalHandler({ manager: terminalManager });
 
-  return new Dispatcher(coordinator, chatHandler, gitHandler, agentTurnHandler, terminalHandler);
+  // `undefined` keeps the default live onboarding probes (6th ctor arg); the
+  // cost reporter is the 7th (ADR-035).
+  return new Dispatcher(
+    coordinator,
+    chatHandler,
+    gitHandler,
+    agentTurnHandler,
+    terminalHandler,
+    undefined,
+    costReporter,
+  );
 }

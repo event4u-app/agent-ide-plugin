@@ -240,3 +240,49 @@ describe('Dispatcher — onboardingDetect (T-PRD12 first-run readiness)', () => 
     expect(data.anthropicKey).toBe(true);
   });
 });
+
+describe('Dispatcher — costReport (ADR-035 Cost Dashboard backend)', () => {
+  const summary = {
+    totalUsd: 6,
+    stepCount: 3,
+    byActivity: { chat: 1, agent: 5 },
+    byMode: { api: 3, cli: 3 },
+    byModel: { 'm-api': 3, 'm-cli': 3 },
+    shadowApiUsd: 3,
+    cliStepCount: 1,
+  };
+
+  it('routes costReport to the injected reporter and forwards the window', async () => {
+    const windows: unknown[] = [];
+    const reporter = {
+      report: async (opts?: unknown) => {
+        windows.push(opts);
+        return summary;
+      },
+    };
+    const dispatcher = new Dispatcher(
+      new WorkspaceCoordinator(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reporter,
+    );
+
+    const res = await dispatcher.dispatch(
+      request('costReport', { since: '2026-06-01T00:00:00.000Z' }),
+    );
+
+    expect(res.messageType).toBe('costReport');
+    expect(res.data).toMatchObject({ totalUsd: 6, shadowApiUsd: 3, cliStepCount: 1 });
+    expect(windows).toEqual([{ since: '2026-06-01T00:00:00.000Z' }]);
+  });
+
+  it('returns cost_not_configured when no reporter is wired', async () => {
+    const dispatcher = new Dispatcher();
+    const res = await dispatcher.dispatch(request('costReport', {}));
+    expect(res.messageType).toBe('error');
+    expect(res.data).toMatchObject({ code: 'cost_not_configured' });
+  });
+});
