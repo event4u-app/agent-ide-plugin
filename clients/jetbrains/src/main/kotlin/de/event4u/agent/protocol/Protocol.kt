@@ -268,7 +268,7 @@ data class AgentTurnResponse(
     val cancelled: Boolean,
     val stopReason: String,
     val budget: ChatBudgetStatus? = null,
-    val annotations: List<ContextSnippetAnnotation>? = null,
+    val annotations: List<Annotation>? = null,
 )
 
 /** One file in a multi-file diff the user reviews before it is written. */
