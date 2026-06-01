@@ -26,6 +26,7 @@
 | [ADR-020](ADR-020-code-suggestion-annotations.md) | Code-Suggestion Annotations — Second Message.annotations Member, SweepAI Suggestion State Machine (Standalone from ToolCallEvent, Flat-Enum Wire State, Pure Reducer, Built from WriteFilesPlan, Bounded Diff Preview, No-Op Invalid Transitions) | Proposed | 2026-06-01 | road-to-v1-0 Phase 10/13 (Message.annotations contract) |
 | [ADR-021](ADR-021-status-row-annotations.md) | Status-Row Annotations — Third Message.annotations Member, SweepAI Progress-Strings Surface (Durable over Transient, `active` State, Optional Phase on the Wire, Generic Descriptor Builder + Mode-Aware Wrapper, Detail-Only Progress Event, No-Op Invalid Transitions) | Proposed | 2026-06-01 | road-to-v1-0 Phase 13 (Message.annotations contract) |
 | [ADR-022](ADR-022-chat-cost-budget-wiring.md) | Chat Cost & Budget Wiring — Pre-Send Estimate Envelope + Injected Budget Recorder in the Chat Handler (Early done:false Estimate, Recorder Injection, Flag-Not-Block, Real-Cost-Only Debit) | Proposed | 2026-06-01 | road-to-product-readiness T-PRD06 |
+| [ADR-023](ADR-023-agent-turn-tool-loop.md) | Agent Turn — Agentic Tool-Loop in Chat (Dedicated agentTurn Method, Standalone Handler, Injectable Tool Registry, Bounded Sequential Loop, String-Only Persistence, Errors Fed Back) | Proposed | 2026-06-01 | road-to-product-readiness (multi-step agent-turn / Seam A) |
 
 ## Status legend
 
