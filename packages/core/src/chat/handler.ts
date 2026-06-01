@@ -1,5 +1,7 @@
 import type {
+  ChatBudgetStatus,
   ChatCost,
+  ChatEstimate,
   ChatSendRequest,
   ChatSendResponse,
   ChatUsage,
@@ -9,6 +11,8 @@ import type {
   LlmRequest,
   LlmUsage,
 } from '@event4u-agent/protocol';
+import type { BudgetRecorder, BudgetStatus } from '../cost/budget.js';
+import { estimateCost, type CostRange } from '../cost/estimate.js';
 import type { LlmBackend } from '../llm/backend.js';
 import { LlmStreamError } from '../llm/backend.js';
 import { CancellationToken } from '../llm/cancellation.js';
@@ -33,6 +37,18 @@ import type { ConversationStore } from './store.js';
  *  - Provider-direct: a single LLM turn, no tool loop. The multi-step
  *    `AgentDriver` folds in as a follow-up (roadmap Phase-1 fallback).
  *  - A mid-stream cancel keeps and persists the partial assistant text.
+ *
+ * Cost & budget wiring (T-PRD06, AI council 2026-06-01, UNANIMOUS B/B1/B-inj/B-warn):
+ *  - A pre-send {@link ChatEstimate} is emitted as an early `done:false`
+ *    envelope BEFORE the first token (B1), when pricing + a local
+ *    `countInputTokens` are both available; otherwise it is silently skipped.
+ *  - An optional {@link BudgetRecorder} is injected (B-inj); the handler records
+ *    each turn's ACTUAL spend exactly once, then surfaces the resulting
+ *    {@link ChatBudgetStatus} on the terminal response.
+ *  - `overBudget` is flagged, never blocked (B-warn) — the hard-cap dialog is IDE.
+ *  - Spend is recorded only for real metered turns (`!cost.isEstimate`): CLI
+ *    shadow cost and unpriced turns read status but never debit a real budget,
+ *    and an errored turn throws before the record so it never counts.
  */
 
 /** Sink for intermediate `done:false` stream envelopes. */
@@ -56,6 +72,12 @@ export interface ChatHandlerDeps {
   store: ConversationStore;
   /** Pricing book for the turn cost. Absent / unknown model → a $0 estimate. */
   pricing?: PricingBook;
+  /**
+   * Optional daily-budget recorder (T-PRD06). When set, the handler records
+   * each real-cost turn's spend and surfaces the resulting status on the
+   * response. Absent → no estimate-budget behaviour (backward-compatible).
+   */
+  budget?: BudgetRecorder;
   /** Output cap for the turn. Default 2048 (matches the `LlmRequest` default). */
   maxTokens?: number;
 }
@@ -104,6 +126,11 @@ export class ChatHandler {
         messages,
         max_tokens: this.deps.maxTokens ?? 2048,
       };
+
+      // Pre-send estimate (B1): emit BEFORE the first token so the composer can
+      // show it while the turn runs. Best-effort — skipped if pricing or a
+      // local token count is unavailable, and never allowed to break the turn.
+      await this.maybeEmitEstimate(messageId, request, backend, model, emit);
 
       let text = '';
       let usage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
@@ -155,13 +182,20 @@ export class ChatHandler {
         content: text,
       });
 
+      const cost = this.computeCost(model, backend.mode, usage);
+      // Record this turn's ACTUAL spend exactly once (B-inj). Reached on the
+      // normal + cancel paths but NOT on a thrown backend error (which exits
+      // above) — so an errored turn never debits the budget.
+      const budget = await this.recordSpend(cost, req.conversationId, model);
+
       const response: ChatSendResponse = {
         messageId: stored?.id ?? messageId,
         text,
         usage: toWireUsage(usage),
-        cost: this.computeCost(model, backend.mode, usage),
+        cost,
         cancelled,
         stopReason,
+        ...(budget ? { budget } : {}),
       };
       return { messageId, messageType: 'chatSend', data: response, done: true };
     } finally {
@@ -180,6 +214,59 @@ export class ChatHandler {
     return true;
   }
 
+  /**
+   * Emit the pre-send estimate as an early `done:false` envelope. No-op unless
+   * a pricing book, a known model, and a local `countInputTokens` are all
+   * present. Fail-open: any error here is swallowed so the turn still runs.
+   */
+  private async maybeEmitEstimate(
+    messageId: string,
+    request: LlmRequest,
+    backend: LlmBackend,
+    model: string,
+    emit: EnvelopeSink,
+  ): Promise<void> {
+    const pricing = this.deps.pricing;
+    if (!pricing || !pricing.getModel(model) || !backend.countInputTokens) return;
+    try {
+      const inputTokens = await backend.countInputTokens(request);
+      if (inputTokens === undefined) return;
+      const range = estimateCost(pricing, {
+        model,
+        inputTokens,
+        maxOutputTokens: request.max_tokens ?? 2048,
+      });
+      const estimate: ChatEstimate = toWireEstimate(range);
+      emit({ messageId, messageType: 'chatSend', data: { estimate }, done: false });
+    } catch {
+      // Best-effort: a failed estimate must never break the turn.
+    }
+  }
+
+  /**
+   * Record the turn's actual spend and return today's budget status. Records a
+   * debit only for a real metered cost (`!isEstimate`, `> 0`); CLI shadow cost
+   * and unpriced turns read status without debiting. Returns `undefined` when
+   * no recorder is injected. Fail-open: a budget error never breaks the turn.
+   */
+  private async recordSpend(
+    cost: ChatCost,
+    conversationId: string,
+    model: string,
+  ): Promise<ChatBudgetStatus | undefined> {
+    const recorder = this.deps.budget;
+    if (!recorder) return undefined;
+    try {
+      const status =
+        !cost.isEstimate && cost.totalUsd > 0
+          ? await recorder.record(cost.totalUsd, { conversationId, model })
+          : await recorder.status();
+      return toWireBudget(status);
+    } catch {
+      return undefined;
+    }
+  }
+
   private computeCost(model: string, mode: LlmMode, usage: LlmUsage): ChatCost {
     if (!this.deps.pricing || !this.deps.pricing.getModel(model)) {
       return { model, mode, totalUsd: 0, isEstimate: true };
@@ -193,6 +280,28 @@ export class ChatHandler {
     // CLI mode is a flat subscription → the metered figure is a shadow estimate.
     return { model, mode, totalUsd: breakdown.total_usd, isEstimate: mode === 'cli' };
   }
+}
+
+function toWireEstimate(range: CostRange): ChatEstimate {
+  return {
+    model: range.model,
+    inputTokens: range.inputTokens,
+    lowerUsd: range.lowerUsd,
+    upperUsd: range.upperUsd,
+    typicalUsd: range.typicalUsd,
+  };
+}
+
+function toWireBudget(s: BudgetStatus): ChatBudgetStatus {
+  return {
+    date: s.date,
+    spentUsd: s.spentUsd,
+    limitUsd: s.limitUsd,
+    remainingUsd: s.remainingUsd,
+    ratio: s.ratio,
+    overBudget: s.overBudget,
+    warning: s.warning,
+  };
 }
 
 function toWireUsage(u: LlmUsage): ChatUsage {

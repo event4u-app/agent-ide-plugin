@@ -45,6 +45,18 @@ export interface BudgetStatus {
   warning: boolean;
 }
 
+/**
+ * Narrow recorder surface the chat handler injects (T-PRD06 wiring). Lets the
+ * handler record a turn's actual spend and read today's status without
+ * depending on the concrete {@link DailyBudgetTracker} — mirrors the optional
+ * `AuditRecorder` injection in {@link import('../agent/approval.js')}.
+ * {@link DailyBudgetTracker} satisfies it structurally.
+ */
+export interface BudgetRecorder {
+  record(usd: number, meta?: Omit<SpendRecord, 'ts' | 'usd'>): Promise<BudgetStatus>;
+  status(): Promise<BudgetStatus>;
+}
+
 const DEFAULT_WARNING_RATIO = 0.8;
 
 export interface DailyBudgetOptions {

@@ -1,3 +1,6 @@
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Envelope, LlmRequest, LlmStreamEvent } from '@event4u-agent/protocol';
 import type { LlmBackend } from './llm/backend.js';
@@ -94,5 +97,25 @@ describe('buildCoreDispatcher — chatSend wiring', () => {
     const terminal = await dispatcher.dispatch(sendEnv('c3', 'hi'), () => {});
     expect(terminal.messageType).toBe('error');
     expect((terminal.data as { code: string }).code).toBe('provider_not_configured');
+  });
+
+  it('wires a daily-budget tracker from the cost option and surfaces a status (T-PRD06)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'event4u-cost-'));
+    const registry = new ProviderRegistry({
+      env: {},
+      providers: [scriptedSpec(['ok'])],
+      defaultProvider: 'anthropic',
+    });
+    const dispatcher = buildCoreDispatcher({
+      registry,
+      store: new InMemoryConversationStore(),
+      cwd: dir,
+      cost: { dailyBudgetUsd: 10 },
+    });
+
+    const terminal = await dispatcher.dispatch(sendEnv('c4', 'hi'), () => {});
+    const data = terminal.data as { budget?: { limitUsd: number | null } };
+    expect(data.budget).toBeDefined();
+    expect(data.budget!.limitUsd).toBe(10);
   });
 });

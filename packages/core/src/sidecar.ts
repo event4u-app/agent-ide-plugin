@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { ChatHandler } from './chat/handler.js';
 import { FileConversationStore, type ConversationStore } from './chat/store.js';
+import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import { GitHandler } from './git/handler.js';
 import { ProviderRegistry } from './llm/provider-registry.js';
@@ -31,6 +32,16 @@ export interface BuildCoreOptions {
   registry?: ProviderRegistry;
   /** Conversation store override (tests). Defaults to a {@link FileConversationStore} under `cwd`. */
   store?: ConversationStore;
+  /**
+   * Daily-budget config (T-PRD06). When set, a {@link DailyBudgetTracker} is
+   * built under `<cwd>/<state>/cost` and injected so the handler records spend
+   * and surfaces a budget status. Omitted → no budget behaviour (the production
+   * wiring from `.agent-settings.yml`'s `cost` key is an IDE-runtime follow-up,
+   * like the pricing book).
+   */
+  cost?: { dailyBudgetUsd?: number | null; warningThresholdRatio?: number };
+  /** Budget recorder override (tests). Takes precedence over `cost`. */
+  budget?: BudgetRecorder;
 }
 
 export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher {
@@ -39,11 +50,22 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   const registry = options.registry ?? new ProviderRegistry({ env });
   const store = options.store ?? new FileConversationStore(join(cwd, PLUGIN_STATE_DIR, 'chats'));
 
+  const budget =
+    options.budget ??
+    (options.cost
+      ? new DailyBudgetTracker({
+          dir: join(cwd, PLUGIN_STATE_DIR, 'cost'),
+          dailyBudgetUsd: options.cost.dailyBudgetUsd,
+          warningThresholdRatio: options.cost.warningThresholdRatio,
+        })
+      : undefined);
+
   const chatHandler = new ChatHandler({
     resolveBackend: (providerId) => registry.resolveBackend(providerId),
     resolveModel: (providerId) => registry.resolveModel(providerId),
     store,
     pricing: options.pricing,
+    ...(budget ? { budget } : {}),
   });
 
   // Git-loop handler — shares the registry; the diff/log are read from the
