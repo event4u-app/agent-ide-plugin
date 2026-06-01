@@ -5,6 +5,7 @@ import type {
   ChatCost,
   ChatMessage,
   ChatUsage,
+  CodeSuggestionAnnotation,
   ContentPart,
   ContextScope,
   ContextSnippetAnnotation,
@@ -33,6 +34,7 @@ import {
   type ToolExecResult,
 } from './approval.js';
 import type { PreparedTool, ToolExecution, ToolRegistry } from './tool-registry.js';
+import { transitionCodeSuggestion } from './suggestions.js';
 import { toToolResultPart, type NormalizedToolCall } from '../tools/normalizer.js';
 
 /**
@@ -211,6 +213,12 @@ export class AgentTurnHandler {
 
       const aggUsage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
       const changedFiles: string[] = [];
+      // Durable code-suggestion annotations, accumulated across every tool call
+      // of the turn (NOT overwritten per iteration) and driven to a terminal
+      // state by the execution outcome. `toolCallSeq` namespaces each call's
+      // suggestion ids so multiple `write_files` calls never collide.
+      const codeSuggestions: CodeSuggestionAnnotation[] = [];
+      let toolCallSeq = 0;
       let finalText = '';
       let iterations = 0;
       let stopReason = 'end_turn';
@@ -261,7 +269,17 @@ export class AgentTurnHandler {
         const toolResults: ContentPart[] = [];
         for (const call of iter.toolCalls) {
           if (token.isCancelled) break;
-          toolResults.push(await this.runOneTool(call, token, messageId, emit, changedFiles));
+          toolResults.push(
+            await this.runOneTool(
+              call,
+              token,
+              messageId,
+              emit,
+              changedFiles,
+              codeSuggestions,
+              toolCallSeq++,
+            ),
+          );
         }
         if (token.isCancelled) {
           stopReason = 'cancelled';
@@ -283,6 +301,12 @@ export class AgentTurnHandler {
       const cost = this.computeCost(model, backend.mode, aggUsage);
       const budget = await this.recordSpend(cost, req.conversationId, model);
 
+      // One `annotations` union for the turn: the context snippets the model
+      // saw at loop start (EXACTLY `injection.used` — what was folded into
+      // `system`, not a budget-dropped superset) followed by the per-edit
+      // code suggestions, in execution order. Omitted when both are empty.
+      const turnAnnotations = [...injection.used, ...codeSuggestions];
+
       const response: AgentTurnResponse = {
         messageId: stored?.id ?? messageId,
         text: finalText,
@@ -293,10 +317,7 @@ export class AgentTurnHandler {
         cancelled: token.isCancelled,
         stopReason,
         ...(budget ? { budget } : {}),
-        // EXACTLY the snippets folded into `system` at the start of the loop
-        // (fork C1; council trap: the wire annotations must reflect what the
-        // model saw, not a budget-dropped superset). Omitted when none injected.
-        ...(injection.used.length ? { annotations: injection.used } : {}),
+        ...(turnAnnotations.length ? { annotations: turnAnnotations } : {}),
       };
       return { messageId, messageType: 'agentTurn', data: response, done: true };
     } finally {
@@ -385,7 +406,9 @@ export class AgentTurnHandler {
 
   /**
    * Drive one tool-call through gate + approval + exec, emit each lifecycle
-   * event, aggregate changed files, and return the `tool_result` part fed back
+   * event, aggregate changed files, fold this call's code-suggestion
+   * annotations (namespaced by `seq`, driven to a terminal state from the
+   * outcome) onto `codeSuggestions`, and return the `tool_result` part fed back
    * to the model next iteration.
    */
   private async runOneTool(
@@ -394,6 +417,8 @@ export class AgentTurnHandler {
     messageId: string,
     emit: EnvelopeSink,
     changedFiles: string[],
+    codeSuggestions: CodeSuggestionAnnotation[],
+    seq: number,
   ): Promise<ContentPart> {
     const emitTool = (ev: ToolCallEvent): void =>
       emit({ messageId, messageType: 'agentTurn', data: { toolEvent: ev }, done: false });
@@ -445,6 +470,22 @@ export class AgentTurnHandler {
       emitTool(ev);
       if (ev.kind === 'approvalResolved' && ev.decision === 'deny') denied = true;
       if (ev.kind === 'error') errorMsg = ev.message;
+    }
+
+    // Fold this call's durable suggestions onto the turn accumulator, driven to
+    // a terminal state from the outcome (council D: denied/failed → error, only
+    // a successful apply → done; a cancelled turn leaves them as-built/pending).
+    if (prepared.suggestions) {
+      for (const suggestion of prepared.suggestions) {
+        codeSuggestions.push(
+          finalizeSuggestion(suggestion, seq, {
+            cancelled: token.isCancelled,
+            denied,
+            execution,
+            errorMsg,
+          }),
+        );
+      }
     }
 
     // Cancel-mid-tool trap: never feed a "successful" result back on cancel.
@@ -545,6 +586,48 @@ function composeTranscript(text: string, changedFiles: string[]): string {
   if (changedFiles.length === 0) return text;
   const summary = `\n\n[edited ${changedFiles.length} file(s): ${changedFiles.join(', ')}]`;
   return text.length > 0 ? `${text}${summary}` : summary.trimStart();
+}
+
+/** Outcome of one tool call that drives its suggestions to a terminal state. */
+interface SuggestionOutcome {
+  cancelled: boolean;
+  denied: boolean;
+  execution?: ToolExecution;
+  errorMsg?: string;
+}
+
+/**
+ * Namespace one built suggestion's id by the tool-call ordinal (so multiple
+ * `write_files` calls in a turn never collide — E1) and drive it to a terminal
+ * state from the call outcome. A successful apply → `done`; a denied / failed /
+ * error outcome → `error`; a cancelled turn leaves it as built (unresolved edits
+ * are already terminal `error`, so their transitions are no-ops).
+ */
+function finalizeSuggestion(
+  suggestion: CodeSuggestionAnnotation,
+  seq: number,
+  outcome: SuggestionOutcome,
+): CodeSuggestionAnnotation {
+  const namespaced: CodeSuggestionAnnotation = {
+    ...suggestion,
+    suggestionId: `call${seq}-${suggestion.suggestionId}`,
+  };
+  if (outcome.cancelled) return namespaced;
+  if (outcome.execution?.ok) return toDone(namespaced);
+  if (outcome.execution) return toError(namespaced, 'write failed');
+  if (outcome.denied) return toError(namespaced, 'Denied by user');
+  return toError(namespaced, outcome.errorMsg ?? 'tool did not execute');
+}
+
+/** Drive a pending suggestion through `processing` to `done` (terminal → no-op). */
+function toDone(suggestion: CodeSuggestionAnnotation): CodeSuggestionAnnotation {
+  const processing = transitionCodeSuggestion(suggestion, { type: 'start' }).next;
+  return transitionCodeSuggestion(processing, { type: 'complete' }).next;
+}
+
+/** Drive a non-terminal suggestion to `error` (terminal → no-op, keeps its message). */
+function toError(suggestion: CodeSuggestionAnnotation, error: string): CodeSuggestionAnnotation {
+  return transitionCodeSuggestion(suggestion, { type: 'fail', error }).next;
 }
 
 function addUsage(agg: LlmUsage, usage: LlmUsage): void {

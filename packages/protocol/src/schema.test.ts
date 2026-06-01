@@ -379,6 +379,40 @@ describe('method registry', () => {
     });
     expect(ev.toolEvent.kind).toBe('started');
   });
+
+  it('carries a mixed annotations union (context-snippet + code-suggestion)', () => {
+    const res = AgentTurnResponseSchema.parse({
+      messageId: 'm1',
+      text: 'done',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      cost: { model: 'claude', mode: 'api', totalUsd: 0, isEstimate: false },
+      changedFiles: ['a.ts'],
+      iterations: 1,
+      cancelled: false,
+      stopReason: 'end_turn',
+      annotations: [
+        {
+          kind: 'context-snippet',
+          rootId: 'A',
+          filePath: 'src/auth.ts',
+          startLine: 0,
+          endLine: 2,
+          relevance: 0.5,
+          category: 'source',
+          preview: 'x',
+        },
+        {
+          kind: 'code-suggestion',
+          suggestionId: 'call0-edit-0',
+          filePath: 'a.ts',
+          state: 'done',
+          diffPreview: '@@ -1 +1 @@\n-a\n+b',
+        },
+      ],
+    });
+    // Both members ride the one `kind`-tagged array on the agent turn.
+    expect(res.annotations?.map((a) => a.kind)).toEqual(['context-snippet', 'code-suggestion']);
+  });
 });
 
 describe('tool-call lifecycle union (product-readiness Phase 1)', () => {

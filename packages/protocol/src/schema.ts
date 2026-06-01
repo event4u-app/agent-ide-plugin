@@ -727,15 +727,23 @@ export const AgentTurnResponseSchema = z.object({
   /** Daily-budget status after this turn's spend, when a recorder is configured. */
   budget: ChatBudgetStatusSchema.optional(),
   /**
-   * Context-snippet annotations for the snippets the Context Engine retrieved
-   * for this turn and folded ONCE into the model's system prompt (T-MR13),
-   * mirroring {@link ChatSendResponseSchema}. EXACTLY the snippets the model
-   * saw at the start of the loop — the IDE renders them as SnippetBadges. NOTE:
-   * these reflect PRE-edit file state; the loop's `tool_result` history carries
-   * the authoritative post-edit state. Absent / empty when no retriever is
-   * wired, the scope is `none`, or the index yielded nothing. Turn-local.
+   * Turn artifacts as a `kind`-tagged {@link AnnotationSchema} union — the agent
+   * turn is the one method that produces more than one annotation kind, so it
+   * carries the union (the chat turn carries only `context-snippet`). Two
+   * producers fold into this one array:
+   *   - `context-snippet` — the snippets the Context Engine retrieved for this
+   *     turn and folded ONCE into the system prompt (T-MR13), EXACTLY what the
+   *     model saw at loop start. These reflect PRE-edit file state; the loop's
+   *     `tool_result` history carries the authoritative post-edit state.
+   *   - `code-suggestion` — one per file edit the turn proposed, built from the
+   *     resolved {@link WriteFilesPlan} and driven to a terminal state by turn
+   *     end: `done` for an applied edit, `error` for an unresolved / denied /
+   *     failed one (the IDE's per-edit diff sidebar, surviving the transient
+   *     {@link ToolCallEvent} stream).
+   * Turn-local — NOT persisted into the string-only transcript. Absent when the
+   * turn neither retrieved context nor proposed an edit.
    */
-  annotations: z.array(ContextSnippetAnnotationSchema).optional(),
+  annotations: z.array(AnnotationSchema).optional(),
 });
 export type AgentTurnResponse = z.infer<typeof AgentTurnResponseSchema>;
 
