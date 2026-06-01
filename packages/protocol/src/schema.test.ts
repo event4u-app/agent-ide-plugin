@@ -6,6 +6,7 @@ import {
   ChatSendResponseSchema,
   ChatTokenEventSchema,
   ConnectRequestSchema,
+  CodeSuggestionAnnotationSchema,
   ContextScopeSchema,
   ContextSnippetAnnotationSchema,
   EchoRequestSchema,
@@ -115,7 +116,7 @@ describe('context scope (discriminated union)', () => {
   });
 });
 
-describe('annotation schemas (T-1308 context-snippet seam)', () => {
+describe('annotation schemas (context-snippet + code-suggestion seams)', () => {
   const snippet = {
     kind: 'context-snippet' as const,
     rootId: 'A',
@@ -145,8 +146,37 @@ describe('annotation schemas (T-1308 context-snippet seam)', () => {
     expect(() => ContextSnippetAnnotationSchema.parse({ ...snippet, startLine: -1 })).toThrow();
   });
 
+  const suggestion = {
+    kind: 'code-suggestion' as const,
+    suggestionId: 'edit-0',
+    filePath: 'src/auth.ts',
+    state: 'pending' as const,
+    diffPreview: '@@ -1 +1 @@\n-a\n+b',
+  };
+
+  it('accepts a well-formed code-suggestion annotation via the union', () => {
+    const parsed = AnnotationSchema.parse(suggestion);
+    expect(parsed.kind).toBe('code-suggestion');
+    expect(CodeSuggestionAnnotationSchema.parse(suggestion).state).toBe('pending');
+  });
+
+  it('carries an errorMessage only when present', () => {
+    const errored = { ...suggestion, state: 'error' as const, errorMessage: 'not found' };
+    expect(CodeSuggestionAnnotationSchema.parse(errored).errorMessage).toBe('not found');
+    expect(CodeSuggestionAnnotationSchema.parse(suggestion).errorMessage).toBeUndefined();
+  });
+
+  it('rejects an unknown suggestion state and an empty suggestionId', () => {
+    expect(() =>
+      CodeSuggestionAnnotationSchema.parse({ ...suggestion, state: 'queued' }),
+    ).toThrow();
+    expect(() =>
+      CodeSuggestionAnnotationSchema.parse({ ...suggestion, suggestionId: '' }),
+    ).toThrow();
+  });
+
   it('rejects an unknown annotation kind', () => {
-    expect(() => AnnotationSchema.parse({ ...snippet, kind: 'code-suggestion' })).toThrow();
+    expect(() => AnnotationSchema.parse({ ...snippet, kind: 'status-row' })).toThrow();
   });
 });
 
