@@ -288,6 +288,39 @@ data class ConversationRewindResponse(
     val warnings: List<String>? = null,
 )
 
+/** Search across conversation history; empty query yields no results. limit is clamped by Core. */
+@Serializable
+data class ConversationSearchRequest(
+    val query: String,
+    val limit: Int? = null,
+)
+
+/** A conversation's metadata, for the IDE history view. */
+@Serializable
+data class ConversationSummary(
+    val id: String,
+    val title: String,
+    val parentId: String? = null,
+    val messageCount: Int,
+    val checkpointCount: Int,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+/** One search hit, ranked by recency then hit count. */
+@Serializable
+data class ConversationSearchResult(
+    val summary: ConversationSummary,
+    val hitCount: Int,
+    val snippet: String? = null,
+)
+
+/** Ranked search hits across all conversations on record. */
+@Serializable
+data class ConversationSearchResponse(
+    val results: List<ConversationSearchResult>,
+)
+
 /** Start an agentic chat turn (LLM + tool loop). maxIterations caps the loop; omitted = Core default. */
 @Serializable
 data class AgentTurnRequest(

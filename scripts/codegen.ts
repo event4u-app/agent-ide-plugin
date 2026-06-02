@@ -334,6 +334,43 @@ const classes: DataClass[] = [
     ],
   },
 
+  // --- conversation search (T-1301) ------------------------------------
+  {
+    name: 'ConversationSearchRequest',
+    doc: 'Search across conversation history; empty query yields no results. limit is clamped by Core.',
+    fields: [
+      { name: 'query', kotlinType: 'String' },
+      { name: 'limit', kotlinType: 'Int?', default: 'null' },
+    ],
+  },
+  {
+    name: 'ConversationSummary',
+    doc: "A conversation's metadata, for the IDE history view.",
+    fields: [
+      { name: 'id', kotlinType: 'String' },
+      { name: 'title', kotlinType: 'String' },
+      { name: 'parentId', kotlinType: 'String?', default: 'null' },
+      { name: 'messageCount', kotlinType: 'Int' },
+      { name: 'checkpointCount', kotlinType: 'Int' },
+      { name: 'createdAt', kotlinType: 'String' },
+      { name: 'updatedAt', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'ConversationSearchResult',
+    doc: 'One search hit, ranked by recency then hit count.',
+    fields: [
+      { name: 'summary', kotlinType: 'ConversationSummary' },
+      { name: 'hitCount', kotlinType: 'Int' },
+      { name: 'snippet', kotlinType: 'String?', default: 'null' },
+    ],
+  },
+  {
+    name: 'ConversationSearchResponse',
+    doc: 'Ranked search hits across all conversations on record.',
+    fields: [{ name: 'results', kotlinType: 'List<ConversationSearchResult>' }],
+  },
+
   // --- agent turn: chat that edits files (product-readiness) -----------
   {
     name: 'AgentTurnRequest',

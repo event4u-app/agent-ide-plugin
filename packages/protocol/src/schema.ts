@@ -697,6 +697,59 @@ export const ConversationRewindResponseSchema = z.object({
 });
 export type ConversationRewindResponse = z.infer<typeof ConversationRewindResponseSchema>;
 
+// --- conversation search (T-1301) ----------------------------------------
+
+export const ConversationSearchRequestSchema = z.object({
+  /**
+   * Free-text query. Tokenised and matched case-insensitively (token-AND) by
+   * Core. An empty / whitespace-only query is valid and returns no results, so
+   * the IDE can round-trip a cleared search box without an error (AI council
+   * codex-cli 0.134.0 + gemini-cli 0.41.2, 2026-06-02, UNANIMOUS Q2=A).
+   */
+  query: z.string(),
+  /**
+   * Cap the number of results (most-recent-updated first). Core additionally
+   * clamps to a hard ceiling so a missing / huge value cannot produce an
+   * oversized NDJSON line (UNANIMOUS Q3=B).
+   */
+  limit: z.number().int().positive().optional(),
+});
+export type ConversationSearchRequest = z.infer<typeof ConversationSearchRequestSchema>;
+
+/** A conversation's metadata, for the IDE history view. */
+export const ConversationSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  parentId: z.string().optional(),
+  messageCount: z.number().int().nonnegative(),
+  checkpointCount: z.number().int().nonnegative(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ConversationSummary = z.infer<typeof ConversationSummarySchema>;
+
+/** One search hit, ranked by recency then hit count. */
+export const ConversationSearchResultSchema = z.object({
+  summary: ConversationSummarySchema,
+  /** Number of haystacks (title + messages) that matched every query token. */
+  hitCount: z.number().int().nonnegative(),
+  /** A short excerpt around the first body match, for the sidebar. */
+  snippet: z.string().optional(),
+});
+export type ConversationSearchResult = z.infer<typeof ConversationSearchResultSchema>;
+
+/**
+ * The wire projection of Core's pure `searchConversations` (T-1301 "search
+ * across history"). Read-only: Core scans the persisted conversations and
+ * returns ranked hits; the IDE renders them. Mirrors the established "Core
+ * returns data, the IDE renders it" shape (`conversationRewind`, `costReport`).
+ * Global scope — every conversation on record, no per-id filter (UNANIMOUS Q4=A).
+ */
+export const ConversationSearchResponseSchema = z.object({
+  results: z.array(ConversationSearchResultSchema),
+});
+export type ConversationSearchResponse = z.infer<typeof ConversationSearchResponseSchema>;
+
 // --- tool-call lifecycle + approval (product-readiness Phase 1) ----------
 
 /**
@@ -1157,6 +1210,10 @@ export const Methods = {
   conversationRewind: {
     request: ConversationRewindRequestSchema,
     response: ConversationRewindResponseSchema,
+  },
+  conversationSearch: {
+    request: ConversationSearchRequestSchema,
+    response: ConversationSearchResponseSchema,
   },
   agentTurn: { request: AgentTurnRequestSchema, response: AgentTurnResponseSchema },
   gitCommitMessage: {

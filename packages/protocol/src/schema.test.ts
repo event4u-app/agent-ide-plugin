@@ -17,6 +17,8 @@ import {
   ContextSnippetAnnotationSchema,
   ConversationRewindRequestSchema,
   ConversationRewindResponseSchema,
+  ConversationSearchRequestSchema,
+  ConversationSearchResponseSchema,
   CostReportRequestSchema,
   CostReportResponseSchema,
   EchoRequestSchema,
@@ -341,6 +343,7 @@ describe('method registry', () => {
       'chatSend',
       'connect',
       'conversationRewind',
+      'conversationSearch',
       'costReport',
       'echo',
       'gitCommitMessage',
@@ -424,6 +427,53 @@ describe('method registry', () => {
     expect(() =>
       ConversationRewindRequestSchema.parse({ conversationId: '', checkpointId: 'x' }),
     ).toThrow();
+  });
+
+  it('conversationSearch round-trips a request and ranked results', () => {
+    // Empty query is VALID (council Q2=A) — the IDE round-trips a cleared box.
+    expect(ConversationSearchRequestSchema.parse({ query: '' }).query).toBe('');
+    const req = ConversationSearchRequestSchema.parse({ query: 'auth bug', limit: 5 });
+    expect(req.limit).toBe(5);
+    // A non-positive / non-integer limit is rejected at the boundary.
+    expect(() => ConversationSearchRequestSchema.parse({ query: 'x', limit: 0 })).toThrow();
+
+    const res = ConversationSearchResponseSchema.parse({
+      results: [
+        {
+          summary: {
+            id: 'c1',
+            title: 'Fix auth',
+            messageCount: 4,
+            checkpointCount: 1,
+            createdAt: '2026-06-01T00:00:00.000Z',
+            updatedAt: '2026-06-02T00:00:00.000Z',
+          },
+          hitCount: 2,
+          snippet: '…auth bug…',
+        },
+      ],
+    });
+    expect(res.results).toHaveLength(1);
+    expect(res.results[0]!.summary.title).toBe('Fix auth');
+    expect(res.results[0]!.hitCount).toBe(2);
+    // parentId / snippet are optional and omitted cleanly.
+    const noSnippet = ConversationSearchResponseSchema.parse({
+      results: [
+        {
+          summary: {
+            id: 'c2',
+            title: 't',
+            messageCount: 0,
+            checkpointCount: 0,
+            createdAt: 'a',
+            updatedAt: 'b',
+          },
+          hitCount: 1,
+        },
+      ],
+    });
+    expect(noSnippet.results[0]!.snippet).toBeUndefined();
+    expect(noSnippet.results[0]!.summary.parentId).toBeUndefined();
   });
 
   it('costReport request/response round-trip the aggregate shape', () => {
