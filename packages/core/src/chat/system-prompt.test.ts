@@ -45,3 +45,57 @@ describe('resolveSystemPrompt — fold workspace guidelines into the system prom
     expect(out).toBeUndefined();
   });
 });
+
+describe('resolveSystemPrompt — fold always-active RULES into the system prompt (T-404, ADR-043)', () => {
+  const noGuidelines = async () => '';
+
+  it('is backward-compatible when no rules loader is passed', async () => {
+    const out = await resolveSystemPrompt('BASE', async () => 'Always test.');
+    expect(out).toContain('<workspace-guidelines>');
+    expect(out).not.toContain('<workspace-rules>');
+  });
+
+  it('wraps the rules in a delimited block and leads with it (council Q5=A)', async () => {
+    const out = await resolveSystemPrompt(
+      'BASE PROMPT',
+      async () => 'Always write tests.',
+      async () => '## Rule: minimal-diff\n\nKeep diffs small.',
+    );
+    expect(out).toContain('<workspace-rules>');
+    expect(out).toContain('Keep diffs small.');
+    expect(out).toContain('</workspace-rules>');
+    // Ordering: rules → guidelines → base.
+    expect(out!.indexOf('Keep diffs small.')).toBeLessThan(out!.indexOf('Always write tests.'));
+    expect(out!.indexOf('Always write tests.')).toBeLessThan(out!.indexOf('BASE PROMPT'));
+  });
+
+  it('uses rules as the whole prompt when guidelines and base are empty', async () => {
+    const out = await resolveSystemPrompt(
+      undefined,
+      noGuidelines,
+      async () => '## Rule: r\n\nbody',
+    );
+    expect(out).toContain('<workspace-rules>');
+    expect(out).toContain('body');
+    expect(out).not.toContain('<workspace-guidelines>');
+  });
+
+  it('omits the rules block when the loader yields only whitespace', async () => {
+    const out = await resolveSystemPrompt('BASE', noGuidelines, async () => '   ');
+    expect(out).toBe('BASE');
+    expect(out).not.toContain('<workspace-rules>');
+  });
+
+  it('fails open: a rules loader error degrades to guidelines+base, never throws', async () => {
+    const out = await resolveSystemPrompt(
+      'BASE',
+      async () => 'guide me',
+      async () => {
+        throw new Error('walk exploded');
+      },
+    );
+    expect(out).toContain('guide me');
+    expect(out).toContain('BASE');
+    expect(out).not.toContain('<workspace-rules>');
+  });
+});

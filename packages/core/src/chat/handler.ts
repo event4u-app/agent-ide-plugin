@@ -29,7 +29,7 @@ import { buildStepEvent, type StepRecorder } from '../tracking/step-recorder.js'
 import { buildContextInjection } from './context-injection.js';
 import { planRewind } from './rewind.js';
 import type { ConversationStore } from './store.js';
-import { resolveSystemPrompt, type LoadGuidelines } from './system-prompt.js';
+import { resolveSystemPrompt, type LoadGuidelines, type LoadRules } from './system-prompt.js';
 
 /**
  * T-VS03 / T-VS04 — chat-RPC handler (pure core).
@@ -150,6 +150,14 @@ export interface ChatHandlerDeps {
    */
   loadGuidelines?: LoadGuidelines;
   /**
+   * Optional always-active RULES loader (T-404 wiring, ADR-043). When set, the
+   * handler folds the workspace rules block AHEAD of guidelines into the turn's
+   * `system` prompt (so the agent's always-active rules reach the model — the
+   * dead T-404 seam, sibling of the guidelines wiring). Fail-open; absent → no
+   * rules (backward-compatible).
+   */
+  loadRules?: LoadRules;
+  /**
    * Optional scoped-context retriever (T-MR13, AI council 2026-06-01,
    * UNANIMOUS A1/B1/C1/D1/E1/F1). When set, the handler retrieves the top-k
    * context snippets for the turn's {@link ContextScope}, folds them into the
@@ -258,8 +266,12 @@ export class ChatHandler {
       const injection = buildContextInjection(annotations);
       const load = this.deps.loadGuidelines;
       const system =
-        load || injection.system
-          ? await resolveSystemPrompt(injection.system, load ?? (async () => ''))
+        load || injection.system || this.deps.loadRules
+          ? await resolveSystemPrompt(
+              injection.system,
+              load ?? (async () => ''),
+              this.deps.loadRules,
+            )
           : undefined;
       const request: LlmRequest = {
         model,

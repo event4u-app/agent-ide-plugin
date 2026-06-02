@@ -31,4 +31,4 @@ export {
 } from './fold.js';
 export { type SearchOptions, searchConversations } from './search.js';
 export { planRewind } from './rewind.js';
-export { type LoadGuidelines, resolveSystemPrompt } from './system-prompt.js';
+export { type LoadGuidelines, type LoadRules, resolveSystemPrompt } from './system-prompt.js';
