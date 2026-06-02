@@ -386,6 +386,47 @@ const classes: DataClass[] = [
     ],
   },
 
+  // --- command palette (T-402 / T-1103) --------------------------------
+  {
+    name: 'CommandSummary',
+    doc: "A slash-command's metadata, for the IDE command-palette overlay.",
+    fields: [
+      { name: 'name', kotlinType: 'String' },
+      { name: 'description', kotlinType: 'String' },
+      { name: 'path', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'CommandListRequest',
+    doc: 'List/search commands; absent query lists all, a query ranks matches. limit clamped by Core.',
+    fields: [
+      { name: 'query', kotlinType: 'String?', default: 'null' },
+      { name: 'limit', kotlinType: 'Int?', default: 'null' },
+    ],
+  },
+  {
+    name: 'CommandListResponse',
+    doc: 'Command summaries (ranked when queried); total is the match count before the cap.',
+    fields: [
+      { name: 'commands', kotlinType: 'List<CommandSummary>' },
+      { name: 'total', kotlinType: 'Int' },
+    ],
+  },
+  {
+    name: 'CommandReadRequest',
+    doc: "Load one command's procedure body by name.",
+    fields: [{ name: 'name', kotlinType: 'String' }],
+  },
+  {
+    name: 'CommandReadResponse',
+    doc: 'A command body resolved MCP-first then local; source is mcp/local/missing.',
+    fields: [
+      { name: 'name', kotlinType: 'String' },
+      { name: 'source', kotlinType: 'String' },
+      { name: 'body', kotlinType: 'String' },
+    ],
+  },
+
   // --- agent turn: chat that edits files (product-readiness) -----------
   {
     name: 'AgentTurnRequest',

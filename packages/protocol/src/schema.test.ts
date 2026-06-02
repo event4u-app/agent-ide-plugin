@@ -11,6 +11,10 @@ import {
   ChatSendRequestSchema,
   ChatSendResponseSchema,
   ChatTokenEventSchema,
+  CommandListRequestSchema,
+  CommandListResponseSchema,
+  CommandReadRequestSchema,
+  CommandReadResponseSchema,
   ConnectRequestSchema,
   CodeSuggestionAnnotationSchema,
   ContextScopeSchema,
@@ -343,6 +347,8 @@ describe('method registry', () => {
       'agentTurn',
       'chatCancel',
       'chatSend',
+      'commandList',
+      'commandRead',
       'connect',
       'conversationList',
       'conversationRewind',
@@ -503,6 +509,45 @@ describe('method registry', () => {
     // total > listed length is the "showing N of M" signal (council split Q3).
     expect(res.total).toBe(7);
     expect(res.conversations[0]!.parentId).toBeUndefined();
+  });
+
+  it('commandList round-trips an optional query + limit and a ranked listing with total', () => {
+    // Both fields optional — an empty request lists every command.
+    expect(CommandListRequestSchema.parse({}).query).toBeUndefined();
+    expect(CommandListRequestSchema.parse({ query: 'comm', limit: 10 }).limit).toBe(10);
+    // A non-positive / non-integer limit is rejected at the boundary.
+    expect(() => CommandListRequestSchema.parse({ limit: 0 })).toThrow();
+
+    const res = CommandListResponseSchema.parse({
+      commands: [
+        {
+          name: 'commit',
+          description: 'Create a commit',
+          path: '/repo/.augment/commands/commit.md',
+        },
+      ],
+      total: 3,
+    });
+    expect(res.commands).toHaveLength(1);
+    // total > listed length is the "showing N of M" signal (mirrors conversationList).
+    expect(res.total).toBe(3);
+  });
+
+  it('commandRead round-trips a body with a source enum and rejects an unknown source', () => {
+    const req = CommandReadRequestSchema.parse({ name: 'commit' });
+    expect(req.name).toBe('commit');
+
+    const local = CommandReadResponseSchema.parse({
+      name: 'commit',
+      source: 'local',
+      body: '# Commit',
+    });
+    expect(local.source).toBe('local');
+    const missing = CommandReadResponseSchema.parse({ name: 'nope', source: 'missing', body: '' });
+    expect(missing.body).toBe('');
+    expect(() =>
+      CommandReadResponseSchema.parse({ name: 'x', source: 'disk', body: '' }),
+    ).toThrow();
   });
 
   it('costReport request/response round-trip the aggregate shape', () => {

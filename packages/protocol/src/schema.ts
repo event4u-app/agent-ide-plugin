@@ -780,6 +780,76 @@ export const ConversationListResponseSchema = z.object({
 });
 export type ConversationListResponse = z.infer<typeof ConversationListResponseSchema>;
 
+// --- command palette (T-402 / T-1103) -------------------------------------
+
+/** A slash-command's metadata, for the IDE command-palette overlay. */
+export const CommandSummarySchema = z.object({
+  /** Command name without the leading slash, e.g. `commit`. */
+  name: z.string(),
+  /** First line of the frontmatter `description`, or the first heading; `''` if neither. */
+  description: z.string(),
+  /** Absolute source path for IDE click-through (local sidecar ↔ local IDE, AI council Q4=A). */
+  path: z.string(),
+});
+export type CommandSummary = z.infer<typeof CommandSummarySchema>;
+
+export const CommandListRequestSchema = z.object({
+  /**
+   * Optional fuzzy filter. Absent / whitespace-only returns every command
+   * alphabetically; a query returns subsequence-ranked matches (best first).
+   * One method covers both list + search (AI council codex-cli 0.134.0 +
+   * gemini-cli 0.41.2, 2026-06-02, UNANIMOUS Q2=A — the picker already treats
+   * an empty query as the full list).
+   */
+  query: z.string().optional(),
+  /**
+   * Cap the number of results. Core additionally clamps to a hard ceiling so a
+   * config tree with hundreds of commands cannot produce an oversized NDJSON
+   * line (sibling-consistency with `conversationList`'s ceiling).
+   */
+  limit: z.number().int().positive().optional(),
+});
+export type CommandListRequest = z.infer<typeof CommandListRequestSchema>;
+
+/**
+ * The wire projection of Core's command index — the IDE's slash-command palette
+ * data path (T-402 picker + T-1103 invocation). Read-only: Core walks the
+ * agent-config tree, filters + ranks via the pure picker, and returns
+ * lightweight summaries; the IDE renders the overlay. `total` is the match
+ * count before the cap so the palette can show "showing N of M". Mirrors the
+ * established "Core returns data, the IDE renders it" shape (`conversationList`).
+ */
+export const CommandListResponseSchema = z.object({
+  commands: z.array(CommandSummarySchema),
+  total: z.number().int().nonnegative(),
+});
+export type CommandListResponse = z.infer<typeof CommandListResponseSchema>;
+
+/** Where a command body was resolved from (`missing` ⇒ no such command). */
+export const CommandSourceSchema = z.enum(['mcp', 'local', 'missing']);
+export type CommandSource = z.infer<typeof CommandSourceSchema>;
+
+export const CommandReadRequestSchema = z.object({
+  /** Command name without the leading slash, as returned by `commandList`. */
+  name: z.string(),
+});
+export type CommandReadRequest = z.infer<typeof CommandReadRequestSchema>;
+
+/**
+ * The wire projection of Core's `loadCommandProcedure` (T-1103). Core stays the
+ * authority on resolution order — the agent-config MCP server's `command_read`
+ * when connected, else the local walker index — so the agent and the palette
+ * see the same body, and the plugin works offline / before MCP is up (AI
+ * council Q5/Q6: core is the loader the IDE calls, not a bypassed cache).
+ */
+export const CommandReadResponseSchema = z.object({
+  name: z.string(),
+  source: CommandSourceSchema,
+  /** Procedure body; empty string when `source` is `missing`. */
+  body: z.string(),
+});
+export type CommandReadResponse = z.infer<typeof CommandReadResponseSchema>;
+
 // --- tool-call lifecycle + approval (product-readiness Phase 1) ----------
 
 /**
@@ -1267,6 +1337,8 @@ export const Methods = {
     response: GitReviewApplyFixResponseSchema,
   },
   costReport: { request: CostReportRequestSchema, response: CostReportResponseSchema },
+  commandList: { request: CommandListRequestSchema, response: CommandListResponseSchema },
+  commandRead: { request: CommandReadRequestSchema, response: CommandReadResponseSchema },
 } as const;
 
 export type MethodName = keyof typeof Methods;

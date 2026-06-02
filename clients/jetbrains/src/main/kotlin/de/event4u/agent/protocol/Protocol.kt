@@ -334,6 +334,42 @@ data class ConversationListResponse(
     val total: Int,
 )
 
+/** A slash-command's metadata, for the IDE command-palette overlay. */
+@Serializable
+data class CommandSummary(
+    val name: String,
+    val description: String,
+    val path: String,
+)
+
+/** List/search commands; absent query lists all, a query ranks matches. limit clamped by Core. */
+@Serializable
+data class CommandListRequest(
+    val query: String? = null,
+    val limit: Int? = null,
+)
+
+/** Command summaries (ranked when queried); total is the match count before the cap. */
+@Serializable
+data class CommandListResponse(
+    val commands: List<CommandSummary>,
+    val total: Int,
+)
+
+/** Load one command's procedure body by name. */
+@Serializable
+data class CommandReadRequest(
+    val name: String,
+)
+
+/** A command body resolved MCP-first then local; source is mcp/local/missing. */
+@Serializable
+data class CommandReadResponse(
+    val name: String,
+    val source: String,
+    val body: String,
+)
+
 /** Start an agentic chat turn (LLM + tool loop). maxIterations caps the loop; omitted = Core default. */
 @Serializable
 data class AgentTurnRequest(
