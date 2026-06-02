@@ -2,6 +2,8 @@ import type {
   ConfigKind,
   ConfigListRequest,
   ConfigListResponse,
+  ConfigReadRequest,
+  ConfigReadResponse,
   ConfigSummary,
 } from '@event4u-agent/protocol';
 import { type ConfigNode, indexByKind } from './agent-config-walker.js';
@@ -89,17 +91,40 @@ export class ConfigHandler {
     const cap = Math.min(req.limit ?? MAX_CONFIG_LIST_RESULTS, MAX_CONFIG_LIST_RESULTS);
     return { items: all.slice(0, cap), total: all.length };
   }
+
+  /**
+   * Read one artifact's body by `{kind, name}`. The body is read straight off
+   * the cached walk index — the SAME walk `list` groups — so list and read can
+   * never disagree (AI council 2026-06-02 Q5). The match is on the artifact's
+   * DISPLAY name (`displayName`, frontmatter `name` ?? slug), i.e. exactly the
+   * `name` `list` returned, not the raw file slug. Local-only: a node hit is
+   * `source: 'local'`, a miss is `source: 'missing'` with an empty body (no
+   * throw — mirrors `commandRead`). Full body, uncapped (Q4).
+   */
+  async read(req: ConfigReadRequest): Promise<ConfigReadResponse> {
+    const node = (await this.nodes()).find(
+      (n) => n.kind === req.kind && displayName(n) === req.name,
+    );
+    return node
+      ? { kind: req.kind, name: req.name, source: 'local', body: node.body }
+      : { kind: req.kind, name: req.name, source: 'missing', body: '' };
+  }
 }
 
 /** Project a walked node to its wire summary. Description falls back like the command picker. */
 function toSummary(node: ConfigNode): ConfigSummary {
-  const fm = node.frontmatter as { description?: unknown; name?: unknown };
+  const fm = node.frontmatter as { description?: unknown };
   const description =
     (typeof fm.description === 'string' && fm.description.trim().length > 0
       ? firstLine(fm.description)
       : firstHeading(node.body)) ?? '';
-  const name = typeof fm.name === 'string' && fm.name.trim().length > 0 ? fm.name : node.name;
-  return { kind: node.kind, name, description, path: node.absPath };
+  return { kind: node.kind, name: displayName(node), description, path: node.absPath };
+}
+
+/** The name a node is listed under: a non-empty frontmatter `name`, else the file slug. */
+function displayName(node: ConfigNode): string {
+  const fm = node.frontmatter as { name?: unknown };
+  return typeof fm.name === 'string' && fm.name.trim().length > 0 ? fm.name : node.name;
 }
 
 function firstLine(text: string): string {
