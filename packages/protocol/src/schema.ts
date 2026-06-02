@@ -543,6 +543,29 @@ export const ChatEstimateSchema = z.object({
 export type ChatEstimate = z.infer<typeof ChatEstimateSchema>;
 
 /**
+ * Pre-send cost-cap verdict (T-411a host integration, AI council 2026-06-02
+ * UNANIMOUS). The Core's `CapsEvaluator` projects an upper-bound cost from the
+ * counted input tokens + the model's output ceiling and compares it against the
+ * `tracking.caps.{single_step,daily}` thresholds. The verdict rides the pre-send
+ * estimate event for `warn`/`confirm` (informational — the turn proceeds; the
+ * soft confirm modal is an IDE round-trip that does not exist yet, so `confirm`
+ * proceeds and surfaces — Q3=A) and the terminal response for `block` (the turn
+ * is refused before any spend, `stopReason: 'cost_cap_blocked'` — Q2=B). `allow`
+ * is never surfaced.
+ */
+export const CapVerdictSchema = z.object({
+  /** `allow` | `warn` | `confirm` | `block`. Only non-`allow` reaches the wire. */
+  verdict: z.enum(['allow', 'warn', 'confirm', 'block']),
+  /** The firing rule, e.g. `single_step.hard_block_above_usd`. */
+  reason: z.string().optional(),
+  /** Projected upper-bound USD the verdict is based on. */
+  projectedUsd: z.number().nonnegative(),
+  /** USD spent today, present only when a `daily` cap fired. */
+  spentTodayUsd: z.number().nonnegative().optional(),
+});
+export type CapVerdict = z.infer<typeof CapVerdictSchema>;
+
+/**
  * Data of an early `done:false` envelope carrying the pre-send estimate
  * (AI council 2026-06-01 fork B1: emit before the first token so the composer
  * can show the estimate while the turn runs, not as post-hoc metadata). The
@@ -552,6 +575,12 @@ export type ChatEstimate = z.infer<typeof ChatEstimateSchema>;
  */
 export const ChatEstimateEventSchema = z.object({
   estimate: ChatEstimateSchema,
+  /**
+   * Pre-send cost-cap verdict (T-411a), present only for `warn`/`confirm` — the
+   * turn proceeds. A `block` never reaches this event; it refuses the turn and
+   * rides the terminal response instead. Absent when no caps fire or `allow`.
+   */
+  cap: CapVerdictSchema.optional(),
 });
 export type ChatEstimateEvent = z.infer<typeof ChatEstimateEventSchema>;
 
@@ -591,6 +620,13 @@ export const ChatSendResponseSchema = z.object({
    * configured. Absent when none is wired (backward-compatible additive field).
    */
   budget: ChatBudgetStatusSchema.optional(),
+  /**
+   * Cost-cap refusal verdict (T-411a, AI council 2026-06-02 Q2=B). Present ONLY
+   * when the turn was refused before send by a `block` cap — `stopReason` is then
+   * `cost_cap_blocked`, `text` is empty, and no spend/step was recorded. Absent
+   * on every normal turn (additive optional field).
+   */
+  cap: CapVerdictSchema.optional(),
   /**
    * Context-snippet annotations for the snippets the Context Engine retrieved
    * for this turn and folded into the model's system prompt (T-MR13). These are
@@ -852,6 +888,13 @@ export const AgentTurnResponseSchema = z.object({
   mode: AgentModeSchema,
   /** Daily-budget status after this turn's spend, when a recorder is configured. */
   budget: ChatBudgetStatusSchema.optional(),
+  /**
+   * Cost-cap refusal verdict (T-411a, AI council 2026-06-02 Q2=B). Present ONLY
+   * when the turn was refused before the loop by a `block` cap — `stopReason` is
+   * then `cost_cap_blocked`, `iterations` is 0, and no spend/step was recorded.
+   * Absent on every normal turn (additive optional field).
+   */
+  cap: CapVerdictSchema.optional(),
   /**
    * Turn artifacts as a `kind`-tagged {@link AnnotationSchema} union — the agent
    * turn is the one method that produces more than one annotation kind, so it

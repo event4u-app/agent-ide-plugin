@@ -256,9 +256,22 @@ const classes: DataClass[] = [
     ],
   },
   {
+    name: 'CapVerdict',
+    doc: 'Pre-send cost-cap verdict (T-411a): warn/confirm ride the estimate event, block refuses the turn.',
+    fields: [
+      { name: 'verdict', kotlinType: 'String' },
+      { name: 'reason', kotlinType: 'String?', default: 'null' },
+      { name: 'projectedUsd', kotlinType: 'Double' },
+      { name: 'spentTodayUsd', kotlinType: 'Double?', default: 'null' },
+    ],
+  },
+  {
     name: 'ChatEstimateEvent',
     doc: 'Data of an early done:false envelope carrying the pre-send estimate (B1).',
-    fields: [{ name: 'estimate', kotlinType: 'ChatEstimate' }],
+    fields: [
+      { name: 'estimate', kotlinType: 'ChatEstimate' },
+      { name: 'cap', kotlinType: 'CapVerdict?', default: 'null' },
+    ],
   },
   {
     name: 'ChatBudgetStatus',
@@ -284,6 +297,8 @@ const classes: DataClass[] = [
       { name: 'cancelled', kotlinType: 'Boolean' },
       { name: 'stopReason', kotlinType: 'String' },
       { name: 'budget', kotlinType: 'ChatBudgetStatus?', default: 'null' },
+      // T-411a — cost-cap refusal verdict; present only on a blocked turn.
+      { name: 'cap', kotlinType: 'CapVerdict?', default: 'null' },
       // T-MR13 — context snippets folded into the turn (SnippetBadge render).
       { name: 'annotations', kotlinType: 'List<ContextSnippetAnnotation>?', default: 'null' },
     ],
@@ -355,6 +370,8 @@ const classes: DataClass[] = [
       // T-PRD08 — the mode the Core resolved + enforced. Always present.
       { name: 'mode', kotlinType: 'String' },
       { name: 'budget', kotlinType: 'ChatBudgetStatus?', default: 'null' },
+      // T-411a — cost-cap refusal verdict; present only on a blocked turn.
+      { name: 'cap', kotlinType: 'CapVerdict?', default: 'null' },
       // Union: T-MR13 context snippets (retrieved) + per-edit code suggestions.
       { name: 'annotations', kotlinType: 'List<Annotation>?', default: 'null' },
     ],

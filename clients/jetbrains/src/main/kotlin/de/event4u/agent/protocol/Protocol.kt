@@ -218,10 +218,20 @@ data class ChatEstimate(
     val typicalUsd: Double,
 )
 
+/** Pre-send cost-cap verdict (T-411a): warn/confirm ride the estimate event, block refuses the turn. */
+@Serializable
+data class CapVerdict(
+    val verdict: String,
+    val reason: String? = null,
+    val projectedUsd: Double,
+    val spentTodayUsd: Double? = null,
+)
+
 /** Data of an early done:false envelope carrying the pre-send estimate (B1). */
 @Serializable
 data class ChatEstimateEvent(
     val estimate: ChatEstimate,
+    val cap: CapVerdict? = null,
 )
 
 /** Daily-budget status after a turn (T-PRD06); nullable fields are null when no budget is set. */
@@ -246,6 +256,7 @@ data class ChatSendResponse(
     val cancelled: Boolean,
     val stopReason: String,
     val budget: ChatBudgetStatus? = null,
+    val cap: CapVerdict? = null,
     val annotations: List<ContextSnippetAnnotation>? = null,
 )
 
@@ -307,6 +318,7 @@ data class AgentTurnResponse(
     val stopReason: String,
     val mode: String,
     val budget: ChatBudgetStatus? = null,
+    val cap: CapVerdict? = null,
     val annotations: List<Annotation>? = null,
 )
 
