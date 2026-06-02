@@ -50,6 +50,13 @@ import { getDiff, type DiffSource } from '../review/diff-source.js';
 import { runReview } from '../review/run.js';
 import { createTrackedReviewObserver } from '../review/observer.js';
 import { CapsBlockedError } from '../review/pipeline.js';
+import { loadReviewRules } from '../review/rules.js';
+import { loadReviewSettings } from '../review/settings-source.js';
+import {
+  applySeverityFloor,
+  voteOptionsFromSettings,
+  type ReviewSettings,
+} from '../review/config.js';
 import type { TrackingDb } from '../tracking/db.js';
 import type { CapsEvaluator } from '../tracking/caps.js';
 import type { PricingBook } from '../pricing/loader.js';
@@ -110,6 +117,16 @@ export interface GitHandlerDeps {
    * surfaces as a coded `cost_cap_blocked` error.
    */
   caps?: CapsEvaluator;
+  /**
+   * Workspace review-config readers (road-to-code-review.md Phase 5). Both
+   * default to the real file readers; tests inject fakes. `reviewSummary`
+   * threads the loaded `review-rules.md` into the Stage-1 prompt (T-CR-501)
+   * and the `.agent-settings.yml :: review` block into the group-vote options
+   * + severity floor (T-CR-502). Each reader fails open (missing/invalid →
+   * no rules / default settings) so a broken config never breaks review.
+   */
+  loadReviewRules?: (cwd: string) => Promise<string | undefined>;
+  loadReviewSettings?: (cwd: string) => Promise<ReviewSettings>;
 }
 
 const ALL_SEVERITIES = Object.keys(SEVERITY_RANK) as Severity[];
@@ -118,11 +135,17 @@ export class GitHandler {
   private readonly runner: GitRunner;
   private readonly maxTokens: number;
   private readonly maxCommitAttempts: number;
+  private readonly loadReviewRules: (cwd: string) => Promise<string | undefined>;
+  private readonly loadReviewSettings: (cwd: string) => Promise<ReviewSettings>;
 
   constructor(private readonly deps: GitHandlerDeps) {
     this.runner = deps.runner ?? defaultGitRunner;
     this.maxTokens = deps.maxTokens ?? 2048;
     this.maxCommitAttempts = Math.max(1, deps.maxCommitAttempts ?? 2);
+    // Default to the real file readers (module-scope imports); the bare names
+    // resolve to the imports, `this.loadReview*` to these private fields.
+    this.loadReviewRules = deps.loadReviewRules ?? loadReviewRules;
+    this.loadReviewSettings = deps.loadReviewSettings ?? loadReviewSettings;
   }
 
   /**
@@ -217,6 +240,16 @@ export class GitHandler {
     const backend = this.deps.resolveBackend(req.providerId);
     const model = this.deps.resolveModel(req.providerId);
 
+    // Workspace review config (Phase 5): the project `review-rules.md` feeds the
+    // Stage-1 prompt (T-CR-501); the `review:` settings drive the group-vote
+    // options + severity floor (T-CR-502). Both reads are best-effort and run
+    // unconditionally (council Q3=A) — the readers fail open, so a missing file
+    // yields no rules / default settings.
+    const [rules, settings] = await Promise.all([
+      this.loadReviewRules(cwd),
+      this.loadReviewSettings(cwd),
+    ]);
+
     // Wire the tracked observer (T-CR-206) only when a pricing book + tracking
     // trail are available — recording no-ops without pricing (the same gate the
     // chat/agent step recorder uses). The review action has no conversation, so
@@ -240,8 +273,10 @@ export class GitHandler {
         cwd,
         source,
         runner: this.runner,
+        vote: voteOptionsFromSettings(settings),
         pipeline: {
           config: { model, maxTokens: this.maxTokens },
+          ...(rules ? { rules } : {}),
           ...(observer ? { observer } : {}),
         },
       });
@@ -255,7 +290,18 @@ export class GitHandler {
       throw error;
     }
     const changes = await getDiff(cwd, source, this.runner);
-    const summary = summarizeReview(result, changes);
+    // Apply the severity floor BEFORE summarising (council Q2=A) so the counts,
+    // top findings, and potential tally all reflect the same filtered set.
+    // `applySeverityFloor` exempts `security` findings when `security_always_error`
+    // is on — they are never hidden by the floor (the council-flagged trap).
+    const summary = summarizeReview(
+      {
+        ...result,
+        issues: applySeverityFloor(result.issues, settings),
+        potentialIssues: applySeverityFloor(result.potentialIssues, settings),
+      },
+      changes,
+    );
 
     const findingsBySeverity: GitSeverityCount[] = ALL_SEVERITIES.map((severity) => ({
       severity,

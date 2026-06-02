@@ -9,6 +9,7 @@ import { TrackingDb } from '../tracking/db.js';
 import { CapsEvaluator } from '../tracking/caps.js';
 import { PricingBook } from '../pricing/loader.js';
 import { GitHandler, GitRequestError } from './handler.js';
+import { resolveReviewSettings } from '../review/config.js';
 
 /**
  * A backend that returns one scripted reply per `stream()` call, clamping to
@@ -164,6 +165,166 @@ describe('GitHandler.reviewSummary', () => {
       'info',
     ]);
     expect(res.findingsBySeverity.every((s) => s.count === 0)).toBe(true);
+  });
+});
+
+describe('GitHandler.reviewSummary — Phase-5 config + rules wiring (T-CR-501/502)', () => {
+  /** Records the system prompt of every stage call; returns no findings. */
+  function capturingBackend(systems: string[]): LlmBackend {
+    return {
+      id: 'fake',
+      mode: 'api',
+      async *stream(req: LlmRequest): AsyncIterable<LlmStreamEvent> {
+        systems.push(req.system ?? '');
+        yield { kind: 'text_delta', text: '' };
+        yield { kind: 'stop', reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } };
+      },
+    };
+  }
+
+  /** Stage-aware backend that emits the given findings (single-pass review). */
+  function findingsBackend(issues: unknown[]): LlmBackend {
+    return {
+      id: 'fake',
+      mode: 'api',
+      async *stream(req: LlmRequest): AsyncIterable<LlmStreamEvent> {
+        const sys = req.system ?? '';
+        let tool: { name: string; input: unknown };
+        if (sys.includes('skeptical second reviewer')) {
+          const content =
+            typeof req.messages[0]?.content === 'string' ? req.messages[0].content : '';
+          const ids = [...content.matchAll(/\[([^\]]+)\]/g)].map((m) => m[1]);
+          tool = {
+            name: 'submit_decisions',
+            input: { decisions: ids.map((id) => ({ issueId: id, keep: true })) },
+          };
+        } else if (sys.includes('stress-testing')) {
+          tool = { name: 'submit_findings', input: { changeSummary: '', issues: [] } };
+        } else {
+          tool = { name: 'submit_findings', input: { changeSummary: 'sums up', issues } };
+        }
+        yield { kind: 'tool_use_start', id: 'x', name: tool.name };
+        yield { kind: 'tool_use_end', id: 'x', name: tool.name, input: tool.input };
+        yield { kind: 'stop', reason: 'tool_use', usage: { input_tokens: 10, output_tokens: 5 } };
+      },
+    };
+  }
+
+  // Findings quote lines present in the test DIFF's hunks, so span validation
+  // resolves them via the hunk fallback (no observer.readFile needed).
+  const LOW_BUG = {
+    file: 'src/foo.ts',
+    startLine: 3,
+    endLine: 3,
+    verbatimSnippet: 'const c = 4;',
+    description: 'unused const',
+    severity: 'low',
+    category: 'bug',
+    confidence: 0.9,
+  };
+  const LOW_SECURITY = {
+    file: 'src/foo.ts',
+    startLine: 2,
+    endLine: 2,
+    verbatimSnippet: 'const b = 3;',
+    description: 'weak value',
+    severity: 'low',
+    category: 'security',
+    confidence: 0.9,
+  };
+
+  it('threads the workspace review rules into the Stage-1 prompt (T-CR-501)', async () => {
+    const systems: string[] = [];
+    const handler = new GitHandler({
+      resolveBackend: () => capturingBackend(systems),
+      resolveModel: () => 'claude-sonnet-4-6',
+      defaultCwd: '/repo',
+      runner: fakeRunner(),
+      loadReviewRules: async () => 'PROJECT-RULE-ZZZ: forbid magic numbers',
+      loadReviewSettings: async () => resolveReviewSettings(),
+    });
+    await handler.reviewSummary({ cwd: '/repo', source: 'unstaged' });
+    // Stage 1 ('senior code reviewer') carries the project rules; the rules are
+    // only ever injected into that stage's system prompt.
+    const stage1 = systems.find((s) => s.includes('senior code reviewer'));
+    expect(stage1).toContain('PROJECT-RULE-ZZZ');
+  });
+
+  it('does not inject a rules block when no review-rules.md is present', async () => {
+    const systems: string[] = [];
+    const handler = new GitHandler({
+      resolveBackend: () => capturingBackend(systems),
+      resolveModel: () => 'claude-sonnet-4-6',
+      defaultCwd: '/repo',
+      runner: fakeRunner(),
+      loadReviewRules: async () => undefined,
+      loadReviewSettings: async () => resolveReviewSettings(),
+    });
+    await handler.reviewSummary({ cwd: '/repo', source: 'unstaged' });
+    expect(systems.every((s) => !s.includes('Project-specific review rules'))).toBe(true);
+  });
+
+  it('passes the settings group_size through as the vote group size (T-CR-502)', async () => {
+    // groupSize 5 runs the review 5× per group; groupSize 1 disables the vote
+    // (one pass). Equal scripted replies → call count scales exactly 5×.
+    const calls = { one: 0, five: 0 };
+    const countingBackend = (counter: { n: number }): LlmBackend => ({
+      id: 'fake',
+      mode: 'api',
+      async *stream(_req: LlmRequest): AsyncIterable<LlmStreamEvent> {
+        counter.n += 1;
+        yield { kind: 'text_delta', text: '' };
+        yield { kind: 'stop', reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } };
+      },
+    });
+    const c1 = { n: 0 };
+    const c5 = { n: 0 };
+    await new GitHandler({
+      resolveBackend: () => countingBackend(c1),
+      resolveModel: () => 'm',
+      defaultCwd: '/repo',
+      runner: fakeRunner(),
+      loadReviewSettings: async () => resolveReviewSettings({ group_size: 1 }),
+    }).reviewSummary({ cwd: '/repo', source: 'unstaged' });
+    await new GitHandler({
+      resolveBackend: () => countingBackend(c5),
+      resolveModel: () => 'm',
+      defaultCwd: '/repo',
+      runner: fakeRunner(),
+      loadReviewSettings: async () => resolveReviewSettings({ group_size: 5 }),
+    }).reviewSummary({ cwd: '/repo', source: 'unstaged' });
+    calls.one = c1.n;
+    calls.five = c5.n;
+    expect(calls.one).toBeGreaterThan(0);
+    expect(calls.five).toBe(calls.one * 5);
+  });
+
+  it('applies the severity floor before summarising, but never hides security (T-CR-502)', async () => {
+    // No floor (info): both the low bug and low security finding survive.
+    const open = await new GitHandler({
+      resolveBackend: () => findingsBackend([LOW_BUG, LOW_SECURITY]),
+      resolveModel: () => 'm',
+      defaultCwd: '/repo',
+      runner: fakeRunner(),
+      loadReviewSettings: async () =>
+        resolveReviewSettings({ group_size: 1, severity_floor: 'info' }),
+    }).reviewSummary({ cwd: '/repo', source: 'unstaged' });
+    expect(open.totalFindings).toBe(2);
+
+    // Floor 'high' drops the low *bug*, but the low *security* finding is exempt
+    // (security_always_error defaults on) — the council-flagged trap.
+    const floored = await new GitHandler({
+      resolveBackend: () => findingsBackend([LOW_BUG, LOW_SECURITY]),
+      resolveModel: () => 'm',
+      defaultCwd: '/repo',
+      runner: fakeRunner(),
+      loadReviewSettings: async () =>
+        resolveReviewSettings({ group_size: 1, severity_floor: 'high' }),
+    }).reviewSummary({ cwd: '/repo', source: 'unstaged' });
+    expect(floored.totalFindings).toBe(1);
+    expect(floored.topFindings).toHaveLength(1);
+    expect(floored.topFindings[0]?.category).toBe('security');
+    expect(floored.topFindings[0]?.severity).toBe('low');
   });
 });
 
