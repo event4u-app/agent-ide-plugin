@@ -206,7 +206,12 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   // One coordinator instance drives BOTH the dispatcher's workspace lifecycle
   // and the chat handler's scoped retrieval (T-MR13) — they MUST share state so
   // a turn retrieves against the same live index the connect handshake built.
-  const coordinator = new WorkspaceCoordinator(embedder ? { embedder } : {});
+  // With a real embedder the cache persists under `<state>/embeddings` so a
+  // cold start does not re-pay the embed cost for unchanged code (T-805
+  // persistence, ADR-047); no embedder ⇒ no vector path ⇒ nothing to persist.
+  const coordinator = new WorkspaceCoordinator(
+    embedder ? { embedder, embeddingCacheDir: join(cwd, PLUGIN_STATE_DIR, 'embeddings') } : {},
+  );
 
   const chatHandler = new ChatHandler({
     resolveBackend: (providerId) => registry.resolveBackend(providerId),

@@ -7,6 +7,7 @@ import type {
   WorkspaceFolder,
 } from '@event4u-agent/protocol';
 import type { Embedder } from './embedder.js';
+import { EmbeddingCacheStore } from './embedding-cache-store.js';
 import { ContextEngine } from './engine.js';
 import { CodeIndexer } from './indexer.js';
 import { LanguageRegistry } from './languages.js';
@@ -48,6 +49,10 @@ export interface IndexTarget {
     opts: { rootIds?: string[] },
     signal?: AbortSignal,
   ): Promise<ContextSnippetAnnotation[]>;
+  /** Seed the embedding cache from disk before an index pass (T-805, ADR-047). */
+  loadCache?(): Promise<void>;
+  /** Persist the embedding cache's working set after an index pass (ADR-047). */
+  persistCache?(): Promise<void>;
 }
 
 /** The slice of {@link MultiRootWalker} the coordinator drives (injectable for tests). */
@@ -67,6 +72,14 @@ export interface WorkspaceCoordinatorOptions {
    * provider activates the vector half of hybrid retrieval.
    */
   embedder?: Embedder;
+  /**
+   * Directory backing the embedding cache (T-805 persistence, ADR-047). Only
+   * used for the default {@link ContextEngine} alongside an {@link embedder};
+   * absent ⇒ the cache is in-memory (re-embeds every session, unchanged).
+   * Ignored when an explicit {@link engine} is injected. The sidecar passes
+   * `<cwd>/<state>/embeddings`.
+   */
+  embeddingCacheDir?: string;
   /** Debounce window before a scheduled (re)index runs. Tests pass `0`. */
   debounceMs?: number;
   /** Reads an absolute path; overridable in tests. */
@@ -101,7 +114,12 @@ export class WorkspaceCoordinator {
     this.registry = opts.registry ?? new RootRegistry();
     this.engine =
       opts.engine ??
-      new ContextEngine(new CodeIndexer(new LanguageRegistry()), { embedder: opts.embedder });
+      new ContextEngine(new CodeIndexer(new LanguageRegistry()), {
+        ...(opts.embedder ? { embedder: opts.embedder } : {}),
+        ...(opts.embedder && opts.embeddingCacheDir
+          ? { cacheStore: new EmbeddingCacheStore(opts.embeddingCacheDir) }
+          : {}),
+      });
     this.debounceMs = opts.debounceMs ?? 2000;
     this.readFileFn = opts.readFile ?? ((p) => readFile(p, 'utf8'));
     const platform = opts.platform ?? process.platform;
@@ -271,6 +289,11 @@ export class WorkspaceCoordinator {
       status.state = 'indexing';
     }
 
+    // Seed the embedding cache from disk before indexing so the re-walk hits it
+    // instead of re-embedding unchanged chunks (T-805 persistence, ADR-047).
+    // Idempotent + fail-soft — a missing/corrupt cache leaves the engine cold.
+    await this.engine.loadCache?.();
+
     for (const [stableId, paths] of byRoot) {
       const root = this.registry.get(stableId);
       if (!root) continue; // cancelled before its turn
@@ -288,6 +311,12 @@ export class WorkspaceCoordinator {
       const status = this.statuses.get(stableId);
       if (status && this.registry.get(stableId)) status.state = 'ready';
     }
+
+    // Persist the embedding cache's working set now the walk has embedded every
+    // current chunk (T-805 persistence, ADR-047). Fail-soft inside the engine;
+    // the coalesced post-walk write keeps the cold-start embed cost off the
+    // next launch.
+    await this.engine.persistCache?.();
   }
 
   private markError(stableId: string, message: string): void {

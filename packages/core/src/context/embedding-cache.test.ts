@@ -50,3 +50,43 @@ describe('EmbeddingCache', () => {
     expect(Array.from(v0!)).not.toEqual(Array.from(v1!)); // distinct text → distinct vector
   });
 });
+
+describe('EmbeddingCache — persistence (ADR-047)', () => {
+  it('seed() serves a persisted vector without re-embedding', async () => {
+    const fake = new FakeEmbedder(32);
+    const spy = vi.spyOn(fake, 'embed');
+    const cache = new EmbeddingCache(fake);
+
+    cache.seed(new Map([[chunkKey('cached text', fake.modelId), Float32Array.from([1, 2, 3])]]));
+    const [vec] = await cache.embed(['cached text']);
+
+    expect(Array.from(vec!)).toEqual([1, 2, 3]); // served from the seed
+    expect(cache.totalMisses).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('seed() never clobbers an embedding produced this session', async () => {
+    const fake = new FakeEmbedder(32);
+    const cache = new EmbeddingCache(fake);
+
+    const [fresh] = await cache.embed(['live text']); // real embed lands first
+    cache.seed(new Map([[chunkKey('live text', fake.modelId), Float32Array.from([9, 9, 9])]]));
+    const [again] = await cache.embed(['live text']);
+
+    expect(Array.from(again!)).toEqual(Array.from(fresh!)); // seed ignored for an existing key
+  });
+
+  it('snapshot() returns only keys touched this session (bounds growth)', async () => {
+    const fake = new FakeEmbedder(32);
+    const cache = new EmbeddingCache(fake);
+
+    // A stale entry seeded from a previous session, plus a live lookup.
+    const staleKey = chunkKey('off-branch chunk', fake.modelId);
+    cache.seed(new Map([[staleKey, Float32Array.from([0, 0, 0])]]));
+    await cache.embed(['current chunk']);
+
+    const snap = cache.snapshot();
+    expect(snap.has(chunkKey('current chunk', fake.modelId))).toBe(true);
+    expect(snap.has(staleKey)).toBe(false); // never looked up → dropped on save
+  });
+});

@@ -5,6 +5,7 @@ import { type BuildContextSnippetsOptions, buildContextSnippets } from './annota
 import { CodeRetriever, type SymbolMatch } from './bm25.js';
 import type { Embedder } from './embedder.js';
 import { EmbeddingCache } from './embedding-cache.js';
+import type { EmbeddingCacheStore } from './embedding-cache-store.js';
 import {
   IdentityReranker,
   SingleQueryExpander,
@@ -83,6 +84,14 @@ export interface ContextEngineOptions {
   embedder?: Embedder;
   reranker?: Reranker;
   queryExpander?: QueryExpander;
+  /**
+   * Durable backing for the embedding cache (T-805 persistence, ADR-047). Only
+   * meaningful alongside an {@link embedder}; absent ⇒ the cache is in-memory
+   * (unchanged). {@link loadCache} seeds from it once; {@link persistCache}
+   * saves the working set. Both are fail-soft — persistence is an optimisation,
+   * never a turn dependency.
+   */
+  cacheStore?: EmbeddingCacheStore;
 }
 
 export class ContextEngine {
@@ -92,6 +101,8 @@ export class ContextEngine {
   private readonly vectorStore?: VectorStore;
   private readonly reranker: Reranker;
   private readonly queryExpander: QueryExpander;
+  private readonly cacheStore?: EmbeddingCacheStore;
+  private cacheLoaded = false;
 
   constructor(
     private readonly indexer: CodeIndexer,
@@ -101,9 +112,38 @@ export class ContextEngine {
     if (this.embedder) {
       this.embeddingCache = new EmbeddingCache(this.embedder);
       this.vectorStore = new VectorStore(this.embedder.dimensions);
+      this.cacheStore = opts.cacheStore;
     }
     this.reranker = opts.reranker ?? new IdentityReranker();
     this.queryExpander = opts.queryExpander ?? new SingleQueryExpander();
+  }
+
+  /**
+   * Seed the embedding cache from its persisted backing (T-805 persistence,
+   * ADR-047). Idempotent — loads at most once per engine — so the coordinator
+   * can call it at the head of every index pass without re-reading the file.
+   * Fail-soft: a missing / corrupt / model-mismatched file leaves the cache
+   * cold (the embed path just rebuilds it).
+   */
+  async loadCache(): Promise<void> {
+    if (this.cacheLoaded || !this.cacheStore || !this.embeddingCache || !this.embedder) return;
+    this.cacheLoaded = true;
+    const persisted = await this.cacheStore.load(this.embedder);
+    if (persisted) this.embeddingCache.seed(persisted);
+  }
+
+  /**
+   * Persist the embedding cache's working set (T-805 persistence, ADR-047).
+   * Fail-soft: a disk error is swallowed because persistence is an optimisation,
+   * never a correctness dependency (mirrors the fail-soft embed path).
+   */
+  async persistCache(): Promise<void> {
+    if (!this.cacheStore || !this.embeddingCache || !this.embedder) return;
+    try {
+      await this.cacheStore.save(this.embeddingCache.snapshot(), this.embedder);
+    } catch {
+      // Persistence is best-effort; the next pass re-attempts.
+    }
   }
 
   private segment(rootId: string): RootSegment {
