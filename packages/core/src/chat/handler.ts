@@ -11,6 +11,8 @@ import type {
   ContextSnippetAnnotation,
   ConversationRewindRequest,
   ConversationRewindResponse,
+  ConversationSearchRequest,
+  ConversationSearchResponse,
   Envelope,
   LlmMode,
   LlmRequest,
@@ -176,6 +178,13 @@ export interface ChatHandlerDeps {
   maxTokens?: number;
 }
 
+/**
+ * Hard ceiling on `conversationSearch` results, independent of the request's
+ * `limit` (T-1301). Bounds the NDJSON line so a missing / oversized `limit`
+ * cannot produce a huge response (AI council 2026-06-02, UNANIMOUS Q3=B).
+ */
+export const MAX_CONVERSATION_SEARCH_RESULTS = 100;
+
 export class ChatHandler {
   /** In-flight cancellation tokens, keyed by `conversationId`. */
   private readonly active = new Map<string, CancellationToken>();
@@ -221,6 +230,43 @@ export class ChatHandler {
       targetTurnIndex: plan.targetTurnIndex,
       changedFiles: plan.changedFiles,
       warnings: plan.warnings,
+    };
+  }
+
+  /**
+   * Search across conversation history (T-1301). Read-only and non-mutating:
+   * delegates to the pure {@link searchConversations} via the live
+   * {@link ConversationStore}, clamps the result count to a hard ceiling
+   * ({@link MAX_CONVERSATION_SEARCH_RESULTS}) so a missing / oversized `limit`
+   * cannot produce a huge NDJSON line, and projects the ranked hits onto the
+   * wire. An empty / whitespace-only query returns no results (the pure scan
+   * yields `[]` for it) — the IDE round-trips a cleared search box cleanly.
+   *
+   * Per the AI council (codex-cli 0.134.0 + gemini-cli 0.41.2, 2026-06-02):
+   * global scope over every conversation on record (UNANIMOUS Q4=A), the full
+   * {@link ConversationSummary} rides the wire because the history sidebar needs
+   * the title + timestamps (UNANIMOUS Q1=A).
+   */
+  async search(req: ConversationSearchRequest): Promise<ConversationSearchResponse> {
+    const cap = Math.min(
+      req.limit ?? MAX_CONVERSATION_SEARCH_RESULTS,
+      MAX_CONVERSATION_SEARCH_RESULTS,
+    );
+    const hits = await this.deps.store.search(req.query, { limit: cap });
+    return {
+      results: hits.map((hit) => ({
+        summary: {
+          id: hit.summary.id,
+          title: hit.summary.title,
+          ...(hit.summary.parentId !== undefined ? { parentId: hit.summary.parentId } : {}),
+          messageCount: hit.summary.messageCount,
+          checkpointCount: hit.summary.checkpointCount,
+          createdAt: hit.summary.createdAt,
+          updatedAt: hit.summary.updatedAt,
+        },
+        hitCount: hit.hitCount,
+        ...(hit.snippet !== undefined ? { snippet: hit.snippet } : {}),
+      })),
     };
   }
 

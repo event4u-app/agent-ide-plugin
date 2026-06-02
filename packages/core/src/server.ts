@@ -7,6 +7,8 @@ import {
   ConnectRequestSchema,
   type ConversationRewindResponse,
   ConversationRewindRequestSchema,
+  type ConversationSearchResponse,
+  ConversationSearchRequestSchema,
   type CostReportResponse,
   CostReportRequestSchema,
   type Envelope,
@@ -114,6 +116,9 @@ export class Dispatcher {
       // Conversation rewind (T-1303): pure non-mutating plan; the IDE applies it.
       conversationRewind: (data: unknown): Promise<ConversationRewindResponse> =>
         this.requireChat().rewind(ConversationRewindRequestSchema.parse(data ?? {})),
+      // Conversation search (T-1301): read-only ranked scan across history.
+      conversationSearch: (data: unknown): Promise<ConversationSearchResponse> =>
+        this.requireChat().search(ConversationSearchRequestSchema.parse(data ?? {})),
       // Cost Dashboard backend (T-707; ADR-035): aggregate the recorded step trail.
       costReport: (data: unknown): Promise<CostReportResponse> =>
         this.requireCost().report(CostReportRequestSchema.parse(data ?? {})),
