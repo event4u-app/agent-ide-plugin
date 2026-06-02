@@ -321,6 +321,19 @@ data class ConversationSearchResponse(
     val results: List<ConversationSearchResult>,
 )
 
+/** List conversations newest-first; limit is optional and clamped by Core. */
+@Serializable
+data class ConversationListRequest(
+    val limit: Int? = null,
+)
+
+/** Newest-first conversation summaries; total is the full count before the cap. */
+@Serializable
+data class ConversationListResponse(
+    val conversations: List<ConversationSummary>,
+    val total: Int,
+)
+
 /** Start an agentic chat turn (LLM + tool loop). maxIterations caps the loop; omitted = Core default. */
 @Serializable
 data class AgentTurnRequest(

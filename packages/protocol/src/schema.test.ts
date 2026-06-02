@@ -15,6 +15,8 @@ import {
   CodeSuggestionAnnotationSchema,
   ContextScopeSchema,
   ContextSnippetAnnotationSchema,
+  ConversationListRequestSchema,
+  ConversationListResponseSchema,
   ConversationRewindRequestSchema,
   ConversationRewindResponseSchema,
   ConversationSearchRequestSchema,
@@ -342,6 +344,7 @@ describe('method registry', () => {
       'chatCancel',
       'chatSend',
       'connect',
+      'conversationList',
       'conversationRewind',
       'conversationSearch',
       'costReport',
@@ -474,6 +477,32 @@ describe('method registry', () => {
     });
     expect(noSnippet.results[0]!.snippet).toBeUndefined();
     expect(noSnippet.results[0]!.summary.parentId).toBeUndefined();
+  });
+
+  it('conversationList round-trips an optional limit and a capped listing with total', () => {
+    // Empty request is valid — the IDE lists everything by default.
+    expect(ConversationListRequestSchema.parse({}).limit).toBeUndefined();
+    expect(ConversationListRequestSchema.parse({ limit: 25 }).limit).toBe(25);
+    // A non-positive / non-integer limit is rejected at the boundary.
+    expect(() => ConversationListRequestSchema.parse({ limit: 0 })).toThrow();
+
+    const res = ConversationListResponseSchema.parse({
+      conversations: [
+        {
+          id: 'c2',
+          title: 'Billing',
+          messageCount: 2,
+          checkpointCount: 0,
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-02T00:00:00.000Z',
+        },
+      ],
+      total: 7,
+    });
+    expect(res.conversations).toHaveLength(1);
+    // total > listed length is the "showing N of M" signal (council split Q3).
+    expect(res.total).toBe(7);
+    expect(res.conversations[0]!.parentId).toBeUndefined();
   });
 
   it('costReport request/response round-trip the aggregate shape', () => {
