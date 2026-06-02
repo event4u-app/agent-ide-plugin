@@ -259,6 +259,24 @@ data class ChatCancelResponse(
     val cancelled: Boolean,
 )
 
+/** Plan a rewind of a conversation to one of its checkpoints (non-mutating; the IDE applies the returned plan). */
+@Serializable
+data class ConversationRewindRequest(
+    val conversationId: String,
+    val checkpointId: String,
+)
+
+/** The rewind plan; found=false when the checkpoint id is not on the conversation. */
+@Serializable
+data class ConversationRewindResponse(
+    val conversationId: String,
+    val checkpointId: String,
+    val found: Boolean,
+    val targetTurnIndex: Int? = null,
+    val changedFiles: List<String>? = null,
+    val warnings: List<String>? = null,
+)
+
 /** Start an agentic chat turn (LLM + tool loop). maxIterations caps the loop; omitted = Core default. */
 @Serializable
 data class AgentTurnRequest(
