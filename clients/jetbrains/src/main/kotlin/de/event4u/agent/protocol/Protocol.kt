@@ -370,6 +370,29 @@ data class CommandReadResponse(
     val body: String,
 )
 
+/** An agent-config artifact's metadata (kind=skill/rule/command), for the IDE registry/picker. */
+@Serializable
+data class ConfigSummary(
+    val kind: String,
+    val name: String,
+    val description: String,
+    val path: String,
+)
+
+/** List agent-config artifacts; absent kind lists all (skills, rules, commands). limit clamped by Core. */
+@Serializable
+data class ConfigListRequest(
+    val kind: String? = null,
+    val limit: Int? = null,
+)
+
+/** Artifact summaries grouped by kind then name; total is the match count before the cap. */
+@Serializable
+data class ConfigListResponse(
+    val items: List<ConfigSummary>,
+    val total: Int,
+)
+
 /** Start an agentic chat turn (LLM + tool loop). maxIterations caps the loop; omitted = Core default. */
 @Serializable
 data class AgentTurnRequest(

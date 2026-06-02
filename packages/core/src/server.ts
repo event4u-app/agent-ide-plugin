@@ -7,6 +7,8 @@ import {
   CommandListRequestSchema,
   type CommandReadResponse,
   CommandReadRequestSchema,
+  type ConfigListResponse,
+  ConfigListRequestSchema,
   type ConnectResponse,
   ConnectRequestSchema,
   type ConversationListResponse,
@@ -46,6 +48,7 @@ import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import type { AgentTurnHandler } from './agent/turn-handler.js';
 import { type ChatHandler, ChatRequestError, type EnvelopeSink } from './chat/handler.js';
 import { type CommandHandler, CommandRequestError } from './commands/handler.js';
+import { type ConfigHandler, ConfigRequestError } from './config/handler.js';
 import { type CostReporter, CostRequestError } from './cost/report.js';
 import { type GitHandler, GitRequestError } from './git/handler.js';
 import { type TerminalHandler, TerminalRequestError } from './terminal/handler.js';
@@ -87,6 +90,10 @@ export class Dispatcher {
     // loads bodies over the live agent-config walk; absent → the two command
     // methods return `commands_not_configured`.
     private readonly commandHandler?: CommandHandler,
+    // Agent-config registry data path (T-401 / ADR-050). Lists skills + rules
+    // (+ commands) over the live walk; absent → `configList` returns
+    // `config_not_configured`.
+    private readonly configHandler?: ConfigHandler,
   ) {
     this.handlers = {
       ping: (): PingResponse => ({ result: 'pong' }),
@@ -141,6 +148,9 @@ export class Dispatcher {
         this.requireCommands().list(CommandListRequestSchema.parse(data ?? {})),
       commandRead: (data: unknown): Promise<CommandReadResponse> =>
         this.requireCommands().read(CommandReadRequestSchema.parse(data ?? {})),
+      // Agent-config registry (T-401 / ADR-050): read-only skill/rule/command listing.
+      configList: (data: unknown): Promise<ConfigListResponse> =>
+        this.requireConfig().list(ConfigListRequestSchema.parse(data ?? {})),
       // Live terminal: input + resize are plain request/response (T-PRD03);
       // `terminalSubscribe` is streaming and handled in `dispatch` below.
       terminalInput: (data: unknown): TerminalInputResponse =>
@@ -181,6 +191,17 @@ export class Dispatcher {
       );
     }
     return this.commandHandler;
+  }
+
+  /** The config handler or a coded error so absent wiring surfaces cleanly. */
+  private requireConfig(): ConfigHandler {
+    if (!this.configHandler) {
+      throw new ConfigRequestError(
+        'config_not_configured',
+        'No config handler is configured on this Core instance.',
+      );
+    }
+    return this.configHandler;
   }
 
   /** The cost reporter or a coded error so absent wiring surfaces cleanly. */
