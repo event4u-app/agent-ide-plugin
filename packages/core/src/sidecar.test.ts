@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -318,5 +318,44 @@ describe('buildCoreDispatcher — conversationRewind wiring (T-1303)', () => {
     const res = await dispatcher.dispatch(rewindEnv('c1', 'cp1'), () => {});
     expect(res.messageType).toBe('error');
     expect(res.data).toMatchObject({ code: 'chat_not_configured' });
+  });
+});
+
+describe('buildCoreDispatcher — command-palette wiring (T-402 / T-1103, ADR-048)', () => {
+  it('serves commandList LIVE over the walked agent-config tree (not commands_not_configured)', async () => {
+    // A temp workspace with one command file under the `.event4u-agent` root.
+    const dir = await mkdtemp(join(tmpdir(), 'sidecar-cmd-'));
+    try {
+      await mkdir(join(dir, '.event4u-agent', 'commands'), { recursive: true });
+      await writeFile(
+        join(dir, '.event4u-agent', 'commands', 'commit.md'),
+        '---\ndescription: Create a commit\n---\n# Commit\n',
+      );
+      const dispatcher = buildCoreDispatcher({
+        cwd: dir,
+        store: new InMemoryConversationStore(),
+      });
+
+      const list = await dispatcher.dispatch(
+        { messageId: 'm1', messageType: 'commandList', data: {}, done: true },
+        () => {},
+      );
+      expect(list.messageType).toBe('commandList'); // proves a CommandHandler IS wired
+      expect(list.data).toMatchObject({
+        commands: [{ name: 'commit', description: 'Create a commit' }],
+        total: 1,
+      });
+
+      const read = await dispatcher.dispatch(
+        { messageId: 'm2', messageType: 'commandRead', data: { name: 'commit' }, done: true },
+        () => {},
+      );
+      expect(read.messageType).toBe('commandRead');
+      expect(read.data).toMatchObject({ name: 'commit', source: 'local' });
+
+      dispatcher.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

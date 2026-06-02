@@ -4,7 +4,9 @@ import { AgentTurnHandler } from './agent/turn-handler.js';
 import { ChatHandler } from './chat/handler.js';
 import { FileConversationStore, type ConversationStore } from './chat/store.js';
 import type { LoadRules } from './chat/system-prompt.js';
+import { CommandHandler } from './commands/handler.js';
 import { createRulesLoader } from './commands/rules-loader.js';
+import { walkAgentConfig } from './config/agent-config-walker.js';
 import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
 import { CalibrationLog } from './cost/reconcile.js';
 import { DefaultCostReporter, type CostReporter } from './cost/report.js';
@@ -302,8 +304,14 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   // `run_shell` tool spawns into.
   const terminalHandler = new TerminalHandler({ manager: terminalManager });
 
+  // Command-palette data path (T-402 / T-1103, ADR-048). Walks the SAME
+  // agent-config tree the rules loader uses (walk-once-cached inside the
+  // handler, session-static); no MCP client is wired yet, so `commandRead`
+  // resolves bodies from the local walker index (the documented offline path).
+  const commandHandler = new CommandHandler({ loadNodes: () => walkAgentConfig(cwd) });
+
   // `undefined` keeps the default live onboarding probes (6th ctor arg); the
-  // cost reporter is the 7th (ADR-035).
+  // cost reporter is the 7th (ADR-035); the command handler is the 8th (ADR-048).
   return new Dispatcher(
     coordinator,
     chatHandler,
@@ -312,5 +320,6 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     terminalHandler,
     undefined,
     costReporter,
+    commandHandler,
   );
 }

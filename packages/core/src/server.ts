@@ -3,6 +3,10 @@ import {
   type ChatCancelResponse,
   ChatCancelRequestSchema,
   ChatSendRequestSchema,
+  type CommandListResponse,
+  CommandListRequestSchema,
+  type CommandReadResponse,
+  CommandReadRequestSchema,
   type ConnectResponse,
   ConnectRequestSchema,
   type ConversationListResponse,
@@ -41,6 +45,7 @@ import {
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import type { AgentTurnHandler } from './agent/turn-handler.js';
 import { type ChatHandler, ChatRequestError, type EnvelopeSink } from './chat/handler.js';
+import { type CommandHandler, CommandRequestError } from './commands/handler.js';
 import { type CostReporter, CostRequestError } from './cost/report.js';
 import { type GitHandler, GitRequestError } from './git/handler.js';
 import { type TerminalHandler, TerminalRequestError } from './terminal/handler.js';
@@ -78,6 +83,10 @@ export class Dispatcher {
     // Cost Dashboard backend (T-707; ADR-035). Reads the recorded step trail and
     // aggregates it; absent → `costReport` returns `cost_not_configured`.
     private readonly costReporter?: CostReporter,
+    // Command-palette data path (T-402 / T-1103). Lists/searches commands and
+    // loads bodies over the live agent-config walk; absent → the two command
+    // methods return `commands_not_configured`.
+    private readonly commandHandler?: CommandHandler,
   ) {
     this.handlers = {
       ping: (): PingResponse => ({ result: 'pong' }),
@@ -127,6 +136,11 @@ export class Dispatcher {
       // Cost Dashboard backend (T-707; ADR-035): aggregate the recorded step trail.
       costReport: (data: unknown): Promise<CostReportResponse> =>
         this.requireCost().report(CostReportRequestSchema.parse(data ?? {})),
+      // Command palette (T-402 / T-1103): read-only list/search + body load.
+      commandList: (data: unknown): Promise<CommandListResponse> =>
+        this.requireCommands().list(CommandListRequestSchema.parse(data ?? {})),
+      commandRead: (data: unknown): Promise<CommandReadResponse> =>
+        this.requireCommands().read(CommandReadRequestSchema.parse(data ?? {})),
       // Live terminal: input + resize are plain request/response (T-PRD03);
       // `terminalSubscribe` is streaming and handled in `dispatch` below.
       terminalInput: (data: unknown): TerminalInputResponse =>
@@ -156,6 +170,17 @@ export class Dispatcher {
       );
     }
     return this.chatHandler;
+  }
+
+  /** The command handler or a coded error so absent wiring surfaces cleanly. */
+  private requireCommands(): CommandHandler {
+    if (!this.commandHandler) {
+      throw new CommandRequestError(
+        'commands_not_configured',
+        'No command handler is configured on this Core instance.',
+      );
+    }
+    return this.commandHandler;
   }
 
   /** The cost reporter or a coded error so absent wiring surfaces cleanly. */
