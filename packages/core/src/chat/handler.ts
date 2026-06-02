@@ -9,6 +9,8 @@ import type {
   ChatMessage,
   ContextScope,
   ContextSnippetAnnotation,
+  ConversationListRequest,
+  ConversationListResponse,
   ConversationRewindRequest,
   ConversationRewindResponse,
   ConversationSearchRequest,
@@ -185,6 +187,15 @@ export interface ChatHandlerDeps {
  */
 export const MAX_CONVERSATION_SEARCH_RESULTS = 100;
 
+/**
+ * Hard ceiling on `conversationList` results, independent of the request's
+ * `limit` (T-1301). Bounds the NDJSON line so a workspace with thousands of
+ * conversations cannot produce a huge response — the sibling of
+ * {@link MAX_CONVERSATION_SEARCH_RESULTS} (AI council 2026-06-02, split Q1
+ * resolved B for sibling-consistency with `conversationSearch`).
+ */
+export const MAX_CONVERSATION_LIST_RESULTS = 100;
+
 export class ChatHandler {
   /** In-flight cancellation tokens, keyed by `conversationId`. */
   private readonly active = new Map<string, CancellationToken>();
@@ -267,6 +278,39 @@ export class ChatHandler {
         hitCount: hit.hitCount,
         ...(hit.snippet !== undefined ? { snippet: hit.snippet } : {}),
       })),
+    };
+  }
+
+  /**
+   * List conversations for the IDE's history sidebar (T-1301). Read-only and
+   * non-mutating: delegates to the pure {@link ConversationStore.list} (already
+   * sorted newest-`updatedAt`-first) via the live store, clamps the count to a
+   * hard ceiling ({@link MAX_CONVERSATION_LIST_RESULTS}) so a workspace with
+   * thousands of conversations cannot produce a huge NDJSON line, and projects
+   * lightweight summaries (no message bodies) onto the wire. Complementary to
+   * {@link search}, which needs a query and returns `[]` for an empty one.
+   *
+   * Per the AI council (codex-cli 0.134.0 + gemini-cli 0.41.2, 2026-06-02):
+   * the split Q1 resolved to a hard ceiling (gemini B) for sibling-consistency
+   * with `conversationSearch`; `total` carries the full count before the cap so
+   * the sidebar can show "showing N of M" — `list` means "show everything", so
+   * a silent truncation would hide history (split Q3 resolved to carry `total`).
+   * The `ConversationSummary` wire DTO is reused unchanged (UNANIMOUS Q2=A).
+   */
+  async list(req: ConversationListRequest): Promise<ConversationListResponse> {
+    const cap = Math.min(req.limit ?? MAX_CONVERSATION_LIST_RESULTS, MAX_CONVERSATION_LIST_RESULTS);
+    const summaries = await this.deps.store.list();
+    return {
+      conversations: summaries.slice(0, cap).map((summary) => ({
+        id: summary.id,
+        title: summary.title,
+        ...(summary.parentId !== undefined ? { parentId: summary.parentId } : {}),
+        messageCount: summary.messageCount,
+        checkpointCount: summary.checkpointCount,
+        createdAt: summary.createdAt,
+        updatedAt: summary.updatedAt,
+      })),
+      total: summaries.length,
     };
   }
 

@@ -5,6 +5,8 @@ import {
   ChatSendRequestSchema,
   type ConnectResponse,
   ConnectRequestSchema,
+  type ConversationListResponse,
+  ConversationListRequestSchema,
   type ConversationRewindResponse,
   ConversationRewindRequestSchema,
   type ConversationSearchResponse,
@@ -119,6 +121,9 @@ export class Dispatcher {
       // Conversation search (T-1301): read-only ranked scan across history.
       conversationSearch: (data: unknown): Promise<ConversationSearchResponse> =>
         this.requireChat().search(ConversationSearchRequestSchema.parse(data ?? {})),
+      // Conversation list (T-1301): read-only newest-first sidebar listing.
+      conversationList: (data: unknown): Promise<ConversationListResponse> =>
+        this.requireChat().list(ConversationListRequestSchema.parse(data ?? {})),
       // Cost Dashboard backend (T-707; ADR-035): aggregate the recorded step trail.
       costReport: (data: unknown): Promise<CostReportResponse> =>
         this.requireCost().report(CostReportRequestSchema.parse(data ?? {})),
