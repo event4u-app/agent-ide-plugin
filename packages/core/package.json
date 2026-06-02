@@ -9,7 +9,7 @@
     "event4u-agent-core": "./dist/server.js"
   },
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/server.js --banner:js=\"#!/usr/bin/env node\"",
+    "build": "node esbuild.config.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
