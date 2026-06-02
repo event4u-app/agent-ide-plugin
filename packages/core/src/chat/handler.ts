@@ -1,4 +1,5 @@
 import type {
+  CapVerdict,
   ChatBudgetStatus,
   ChatCost,
   ChatEstimate,
@@ -23,6 +24,7 @@ import type { LlmBackend } from '../llm/backend.js';
 import { LlmStreamError } from '../llm/backend.js';
 import { CancellationToken } from '../llm/cancellation.js';
 import type { PricingBook } from '../pricing/loader.js';
+import type { CapEvaluation, CapsEvaluator } from '../tracking/caps.js';
 import { buildStepEvent, type StepRecorder } from '../tracking/step-recorder.js';
 import { buildContextInjection } from './context-injection.js';
 import { planRewind } from './rewind.js';
@@ -126,6 +128,18 @@ export interface ChatHandlerDeps {
    * breaks the turn. Absent → no reconciliation (backward-compatible).
    */
   calibration?: CalibrationLog;
+  /**
+   * Optional pre-send cost-cap evaluator (T-411a host integration, AI council
+   * 2026-06-02, UNANIMOUS Q0–Q6). When set, the handler projects the turn's
+   * upper-bound cost from the SAME input-token count the estimate uses and
+   * evaluates it against the configured `tracking.caps` thresholds BEFORE the
+   * provider stream. A `block` verdict refuses the turn (no spend, no step,
+   * `stopReason: 'cost_cap_blocked'`); `warn`/`confirm` ride the pre-send
+   * estimate event and the turn proceeds (the confirm modal is an IDE
+   * round-trip that does not exist yet — Q3=A). Absent / no caps configured →
+   * no gate (backward-compatible). Fail-open: an evaluator error never blocks.
+   */
+  capsEvaluator?: CapsEvaluator;
   /**
    * Optional workspace-guidelines loader (T-1307, AI council 2026-06-01,
    * UNANIMOUS A2/C2/D1/E1/F1). When set, the handler folds the current
@@ -254,13 +268,20 @@ export class ChatHandler {
         ...(system ? { system } : {}),
       };
 
-      // Pre-send estimate (B1): emit BEFORE the first token so the composer can
-      // show it while the turn runs. Best-effort — skipped if pricing or a
-      // local token count is unavailable, and never allowed to break the turn.
-      // The range is captured in a TURN-LOCAL (never a handler field) so the
-      // finalize-point reconciliation compares THIS turn's real cost against
-      // THIS turn's estimate — no stale-estimate leakage across reused handlers.
-      const estimateRange = await this.maybeEmitEstimate(messageId, request, backend, model, emit);
+      // Pre-flight (B1 + T-411a): count input tokens ONCE, emit the pre-send
+      // estimate BEFORE the first token so the composer can show it while the
+      // turn runs, AND evaluate the cost caps from the same projection. A
+      // `block` verdict refuses the turn HERE — before the provider stream,
+      // before any spend or step row (Q2=B). Best-effort otherwise — skipped if
+      // pricing or a local token count is unavailable, never allowed to break
+      // the turn. The range is captured in a TURN-LOCAL (never a handler field)
+      // so the finalize-point reconciliation compares THIS turn's real cost
+      // against THIS turn's estimate — no stale leakage across reused handlers.
+      const preflight = await this.preflight(messageId, request, backend, model, emit);
+      if (preflight.blocked && preflight.cap) {
+        return this.blockedResponse(messageId, model, backend.mode, preflight.cap);
+      }
+      const estimateRange = preflight.range;
 
       let text = '';
       let usage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
@@ -395,37 +416,113 @@ export class ChatHandler {
   }
 
   /**
-   * Emit the pre-send estimate as an early `done:false` envelope AND return the
-   * underlying {@link CostRange} so the finalize point can reconcile the real
-   * cost against it (T-706) without a second `countInputTokens` call (A2).
-   * No-op (→ `undefined`) unless a pricing book, a known model, and a local
-   * `countInputTokens` are all present. Fail-open: any error here is swallowed
-   * (→ `undefined`) so the turn still runs.
+   * Pre-flight a turn: count input tokens ONCE, emit the pre-send estimate
+   * envelope, AND evaluate the cost caps (T-411a) from the same projection
+   * (council Q6=A — reuse the one token count, never count twice).
+   *
+   * Returns `{ range?, cap?, blocked }`:
+   *  - `blocked: true` (+ `cap`) when a `block` verdict fired — the caller
+   *    refuses the turn; NO estimate event is emitted for a block (the turn is
+   *    not running).
+   *  - otherwise emits the estimate event (carrying `cap` for `warn`/`confirm`
+   *    — Q1=A) and returns the {@link CostRange} so the finalize point can
+   *    reconcile the real cost against it (T-706) without a second
+   *    `countInputTokens` call (A2).
+   *
+   * No-op (→ not blocked, no event, `range` undefined) unless a pricing book, a
+   * known model, and a local `countInputTokens` are all present. Fail-open: any
+   * error here is swallowed (→ not blocked, no event) so the turn still runs —
+   * a cap NEVER blocks on infrastructure failure, only on an explicit `block`
+   * verdict (council Q6 trap).
    */
-  private async maybeEmitEstimate(
+  private async preflight(
     messageId: string,
     request: LlmRequest,
     backend: LlmBackend,
     model: string,
     emit: EnvelopeSink,
-  ): Promise<CostRange | undefined> {
+  ): Promise<{ range?: CostRange; cap?: CapEvaluation; blocked: boolean }> {
     const pricing = this.deps.pricing;
-    if (!pricing || !pricing.getModel(model) || !backend.countInputTokens) return undefined;
+    if (!pricing || !pricing.getModel(model) || !backend.countInputTokens) {
+      return { blocked: false };
+    }
     try {
       const inputTokens = await backend.countInputTokens(request);
-      if (inputTokens === undefined) return undefined;
-      const range = estimateCost(pricing, {
-        model,
-        inputTokens,
-        maxOutputTokens: request.max_tokens ?? 2048,
-      });
+      if (inputTokens === undefined) return { blocked: false };
+      // The output cap MUST match `max_tokens` actually sent to the provider —
+      // a drift makes the cap leaky / unauthoritative (council trap).
+      const maxOutputTokens = request.max_tokens ?? 2048;
+      const range = estimateCost(pricing, { model, inputTokens, maxOutputTokens });
+      // Caps fail open INDEPENDENTLY of the estimate: an evaluator error (e.g. a
+      // torn daily-spend read) must neither block the turn NOR suppress the
+      // estimate event (council Q6 trap).
+      const cap = await this.evaluateCaps(model, inputTokens, maxOutputTokens).catch(
+        () => undefined,
+      );
+      if (cap?.verdict === 'block') {
+        // A block refuses the turn — surface it on the terminal response, NOT
+        // on a pre-send estimate event.
+        return { cap, blocked: true };
+      }
       const estimate: ChatEstimate = toWireEstimate(range);
-      emit({ messageId, messageType: 'chatSend', data: { estimate }, done: false });
-      return range;
+      // Only `warn`/`confirm` ride the estimate event; `allow` is never surfaced.
+      const wireCap =
+        cap && (cap.verdict === 'warn' || cap.verdict === 'confirm') ? toWireCap(cap) : undefined;
+      emit({
+        messageId,
+        messageType: 'chatSend',
+        data: { estimate, ...(wireCap ? { cap: wireCap } : {}) },
+        done: false,
+      });
+      return { range, cap, blocked: false };
     } catch {
-      // Best-effort: a failed estimate must never break the turn.
-      return undefined;
+      // Best-effort: a failed estimate / cap eval must never break or block the turn.
+      return { blocked: false };
     }
+  }
+
+  /**
+   * Evaluate the cost caps for the projected turn. No-op (→ `undefined`) unless
+   * a {@link CapsEvaluator} is injected; the evaluator returns `allow` when no
+   * `tracking.caps` thresholds are configured, so an absent config is inert.
+   * Its own errors propagate to the fail-open `catch` in {@link preflight}.
+   */
+  private async evaluateCaps(
+    model: string,
+    inputTokens: number,
+    outputCapTokens: number,
+  ): Promise<CapEvaluation | undefined> {
+    const evaluator = this.deps.capsEvaluator;
+    if (!evaluator) return undefined;
+    return evaluator.evaluate({
+      input_tokens: inputTokens,
+      output_cap_tokens: outputCapTokens,
+      model,
+    });
+  }
+
+  /**
+   * Build the terminal response for a turn refused by a `block` cost cap
+   * (council Q2=B): empty text, $0 cost, `stopReason: 'cost_cap_blocked'`, and
+   * the verdict on `cap`. No assistant message is persisted and no spend / step
+   * is recorded — the turn never ran (the user message stays on record).
+   */
+  private blockedResponse(
+    messageId: string,
+    model: string,
+    mode: LlmMode,
+    cap: CapEvaluation,
+  ): Envelope {
+    const response: ChatSendResponse = {
+      messageId,
+      text: '',
+      usage: toWireUsage({ input_tokens: 0, output_tokens: 0 }),
+      cost: this.computeCost(model, mode, { input_tokens: 0, output_tokens: 0 }),
+      cancelled: false,
+      stopReason: 'cost_cap_blocked',
+      cap: toWireCap(cap),
+    };
+    return { messageId, messageType: 'chatSend', data: response, done: true };
   }
 
   /**
@@ -544,6 +641,16 @@ function toWireEstimate(range: CostRange): ChatEstimate {
     lowerUsd: range.lowerUsd,
     upperUsd: range.upperUsd,
     typicalUsd: range.typicalUsd,
+  };
+}
+
+/** Map a core {@link CapEvaluation} (snake_case) onto the wire `CapVerdict`. */
+function toWireCap(e: CapEvaluation): CapVerdict {
+  return {
+    verdict: e.verdict,
+    ...(e.reason !== undefined ? { reason: e.reason } : {}),
+    projectedUsd: e.projected_usd,
+    ...(e.spent_today_usd !== undefined ? { spentTodayUsd: e.spent_today_usd } : {}),
   };
 }
 
