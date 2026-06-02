@@ -6,13 +6,22 @@
 
 ## Overall
 
-**141 / 291 steps done · 48%**
+**141 / 290 steps done · 49%**
 
-> road-to-vertical-slice archived 2026-06-01 (reached open==0; its `[~]` IDE smokes handed to road-to-product-readiness + docs/MANUAL_VERIFICATION.md). Overall recomputed over the 7 remaining open roadmaps via Done/(Open+Done), deferred/cancelled excluded.
+> 2026-06-02: T-411a/b host integration flipped `[ ]`→`[~]` (caps pre-send gate backend landed, ADR-041) — one open became deferred, so the Done/(Open+Done) denominator drops 291→290.
 
 ```text
-███████████████████░░░░░░░░░░░░░░░░░░░░░   48%
+███████████████████░░░░░░░░░░░░░░░░░░░░░   49%
 ```
+
+## ⚠️ Iron Law 3 — unresolved deferred items
+
+These roadmaps have `count_open == 0` but carry `[~]` deferred items. Per `roadmap-progress-sync` Iron Law 3 they do NOT auto-archive — the user must resolve the deferrals first (spawn follow-up, restore, or cancel). See [`roadmap-management § 4b`](../packages/core/.agent-src.uncondensed/skills/roadmap-management/SKILL.md).
+
+| Roadmap | Done | Deferred | Cancelled |
+|---|---:|---:|---:|
+| [road-to-code-review.md](roadmaps/road-to-code-review.md) | 32 | 12 | 4 |
+| [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 12 | 16 | 2 |
 
 ## Open roadmaps
 
@@ -21,10 +30,10 @@
 | 1 | [road-to-code-review.md](roadmaps/road-to-code-review.md) | 5 | 48 | 0 | 32 | 12 | 4 | ██████████ 100% |
 | 2 | [road-to-multi-project.md](roadmaps/road-to-multi-project.md) | 3 | 30 | 0 | 12 | 16 | 2 | ██████████ 100% |
 | 3 | [road-to-mvp-ui-design.md](roadmaps/road-to-mvp-ui-design.md) | 7 | 67 | 48 | 18 | 0 | 1 | ███░░░░░░░ 27% |
-| 4 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 18 | 0 | 0 | 0 | ░░░░░░░░░░ 0% |
+| 4 | [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md) | 5 | 18 | 17 | 0 | 1 | 0 | ░░░░░░░░░░ 0% |
 | 5 | [road-to-mvp.md](roadmaps/road-to-mvp.md) | 5 | 67 | 27 | 35 | 5 | 0 | ██████░░░░ 56% |
-| 6 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 45 | 42 | 35 | 0 | ████░░░░░░ 48% |
-| 7 | [road-to-product-readiness.md](roadmaps/road-to-product-readiness.md) | 4 | 27 | 12 | 2 | 13 | 0 | █░░░░░░░░░ 14% |
+| 6 | [road-to-product-readiness.md](roadmaps/road-to-product-readiness.md) | 4 | 27 | 12 | 2 | 13 | 0 | █░░░░░░░░░ 14% |
+| 7 | [road-to-v1-0.md](roadmaps/road-to-v1-0.md) | 11 | 122 | 45 | 42 | 35 | 0 | █████░░░░░ 48% |
 
 ---
 
@@ -68,14 +77,14 @@
 
 ### [road-to-mvp-ui-finish.md](roadmaps/road-to-mvp-ui-finish.md)
 
-**MVP UI finish — close every `[~]` task from road-to-mvp.md** — 0 / 18 done (0%)
+**MVP UI finish — close every `[~]` task from road-to-mvp.md** — 0 / 17 done (0%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
 | 1 | carry-over | ⬜ not started | 2 | 0 | 0 | 0 | 0% |
 | 2 | carry-over | ⬜ not started | 4 | 0 | 0 | 0 | 0% |
 | 3 | carry-over | ⬜ not started | 2 | 0 | 0 | 0 | 0% |
-| 4 | carry-over | ⬜ not started | 5 | 0 | 0 | 0 | 0% |
+| 4 | carry-over | 🟡 in progress | 4 | 0 | 1 | 0 | 0% |
 | 5 | carry-over (Buffer) | ⬜ not started | 5 | 0 | 0 | 0 | 0% |
 
 ### [road-to-mvp.md](roadmaps/road-to-mvp.md)
@@ -90,9 +99,20 @@
 | 4 | agent-config v0 + Claude CLI mode + Tracking (4 weeks) | 🟡 in progress | 6 | 14 | 1 | 0 | 70% |
 | 5 | Buffer (1-3 weeks) | 🟡 in progress | 8 | 2 | 2 | 0 | 20% |
 
+### [road-to-product-readiness.md](roadmaps/road-to-product-readiness.md)
+
+**Product Readiness — Trustworthy, Installable, Daily-Driver** — 2 / 14 done (14%)
+
+| # | Phase | State | Open | Done | Deferred | Cancelled | % |
+|---|---|---|---:|---:|---:|---:|---:|
+| 1 | Surface wiring: tool-approval + diff review (both IDEs) | ⬜ not started | 1 | 0 | 4 | 0 | 0% |
+| 2 | Trust & Control UX | ⬜ not started | 2 | 0 | 5 | 0 | 0% |
+| 3 | Distribution & onboarding | 🟡 in progress | 2 | 2 | 1 | 0 | 50% |
+| 4 | Git workflow integration | ⬜ not started | 7 | 0 | 3 | 0 | 0% |
+
 ### [road-to-v1-0.md](roadmaps/road-to-v1-0.md)
 
-**v1.0 — Internal alpha, dogfood it** — 42 / 88 done (48%)
+**v1.0 — Internal alpha, dogfood it** — 42 / 87 done (48%)
 
 | # | Phase | State | Open | Done | Deferred | Cancelled | % |
 |---|---|---|---:|---:|---:|---:|---:|
@@ -104,18 +124,7 @@
 | 10 | Native IDE depth (SweepAI-style) (3 weeks, moved from S9) | ⬜ not started | 11 | 0 | 0 | 0 | 0% |
 | 11 | MCP client + full agent-config coverage (3 weeks) | ✅ done | 0 | 5 | 5 | 0 | 100% |
 | 12 | Per-CLI gear panel + Unified Session Browser (2 weeks) | 🟡 in progress | 5 | 1 | 3 | 0 | 17% |
-| 13 | UX polish + late-arriving items (3 weeks) | 🟡 in progress | 5 | 0 | 6 | 0 | 0% |
+| 13 | UX polish + late-arriving items (3 weeks) | ⬜ not started | 5 | 0 | 6 | 0 | 0% |
 | 14 | Pricing Book signing + Telemetry + Docs (3 weeks) | 🟡 in progress | 3 | 7 | 2 | 0 | 70% |
 | 15 | Buffer + Beta Release (2-3 weeks) | ⬜ not started | 14 | 0 | 0 | 0 | 0% |
-
-### [road-to-product-readiness.md](roadmaps/road-to-product-readiness.md)
-
-**Product Readiness — Trustworthy, Installable, Daily-Driver** — 2 / 14 done (14%)
-
-| # | Phase | State | Open | Done | Deferred | Cancelled | % |
-|---|---|---|---:|---:|---:|---:|---:|
-| 1 | Surface wiring: tool-approval + diff review (both IDEs) | 🟡 in progress | 1 | 0 | 4 | 0 | 0% |
-| 2 | Trust & Control UX | 🟡 in progress | 2 | 0 | 5 | 0 | 0% |
-| 3 | Distribution & onboarding | 🟡 in progress | 2 | 2 | 1 | 0 | 50% |
-| 4 | Git workflow integration | 🟡 in progress | 7 | 0 | 3 | 0 | 0% |
 

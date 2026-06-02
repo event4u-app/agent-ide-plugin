@@ -104,11 +104,19 @@ The original task ids stay — every entry is a continuation, not a new task.
   drawer with the step events for the turn (data from
   `step_events.jsonl`). Unit tests: footer formatter, drawer-state
   reducer.
-- [ ] **T-411a / T-411b host integration.** Wire the `CapsEvaluator`
+- [~] **T-411a / T-411b host integration.** Wire the `CapsEvaluator`
   result + `countInputTokens()` into the chat-input footer:
   `Context: ≈14k tok · $0.043 · Output cap: 2k · Daily remaining: $4.27`.
   Yellow banner on `warn`, modal on `confirm`, disabled button on `block`.
   Backend already lands in `road-to-mvp.md`.
+  <!-- deferred 2026-06-02: BACKEND GATE LANDED (ADR-041, PR — wires the
+  dead CapsEvaluator into buildCoreDispatcher + both turn handlers'
+  pre-send `preflight`: a `block` cap refuses the turn before any spend
+  [`stopReason: cost_cap_blocked` + the verdict on a new `cap` wire field],
+  `warn`/`confirm` ride the existing estimate event and proceed). The
+  chat-input footer / yellow banner / disabled-button render + the
+  soft-confirm modal round-trip are the IDE last-mile → stays `[~]`. -->
+
 - [ ] **T-412 host integration.** Stop button + ESC keybinding fire the
   `CancellationToken.requestCancel()` on the active conversation. The
   3-layer fan-out already lands in the backend; this task is the UI
