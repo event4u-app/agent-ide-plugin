@@ -1,6 +1,9 @@
+import { access, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ContextSnippetAnnotation, WorkspaceFolder } from '@event4u-agent/protocol';
-import type { Embedder } from './embedder.js';
+import { FakeEmbedder, type Embedder } from './embedder.js';
 import type { RootRegistry } from './roots.js';
 import {
   WorkspaceCoordinator,
@@ -257,5 +260,26 @@ describe('WorkspaceCoordinator — embedder threading (T-806, ADR-044)', () => {
     // Indexing still completes (lexical) — the embedder is purely additive.
     expect(status.every((s) => s.state === 'indexing')).toBe(true);
     expect(coord.status().find((s) => s.stableId === 'A')?.state).toBe('ready');
+  });
+
+  it('persists the embedding cache to embeddingCacheDir after the index walk (ADR-047)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'coord-cache-'));
+    try {
+      // No `engine` injected → the real ContextEngine is built with the embedder
+      // AND a persistent cache backed by `dir`; the post-walk flush writes it.
+      const coord = new WorkspaceCoordinator({
+        embedder: new FakeEmbedder(16),
+        embeddingCacheDir: dir,
+        debounceMs: 0,
+        readFile: async () => 'export function authenticateUser() {\n  return true;\n}\n',
+        walkerFactory: fakeWalkerFactory({ A: ['src/auth.ts'] }),
+      });
+      await coord.connect([folder('A')]);
+      await coord.whenIdle();
+
+      await expect(access(join(dir, 'cache.bin'))).resolves.toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
