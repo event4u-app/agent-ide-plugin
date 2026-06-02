@@ -3,6 +3,7 @@ import type {
   AgentTurnResponse,
   ChatBudgetStatus,
   ChatCost,
+  ChatEstimate,
   ChatMessage,
   ChatUsage,
   CodeSuggestionAnnotation,
@@ -21,6 +22,8 @@ import type { ConversationStore } from '../chat/store.js';
 import { resolveSystemPrompt, type LoadGuidelines } from '../chat/system-prompt.js';
 import { isAbortError } from '../abort.js';
 import type { BudgetRecorder, BudgetStatus } from '../cost/budget.js';
+import { estimateCost, type CostRange } from '../cost/estimate.js';
+import type { CalibrationLog } from '../cost/reconcile.js';
 import type { LlmBackend } from '../llm/backend.js';
 import { LlmStreamError } from '../llm/backend.js';
 import { CancellationToken } from '../llm/cancellation.js';
@@ -106,6 +109,22 @@ export interface AgentTurnHandlerDeps {
    * `pricing_book_version`. Fail-open.
    */
   step?: StepRecorder;
+  /**
+   * Optional calibration-drift log (T-706 wiring, ADR-037, AI council 2026-06-02,
+   * UNANIMOUS Q0=A). Mirrors `ChatHandlerDeps.calibration`: when set, the handler
+   * reconciles the turn's aggregated real cost against the pre-flight estimate at
+   * the SAME finalize point as {@link recordSpend}. Reconciliation is gated on a
+   * SINGLE-ITERATION turn (`iterations === 1`) AND a non-cancelled turn — a
+   * single-iteration pre-flight estimate is only a fair accuracy test of a turn
+   * that ran exactly one streamed LLM request; a multi-iteration loop is a
+   * different cost object (growing input history + per-iteration output) and
+   * would trip the drift threshold structurally, drowning the genuine
+   * estimator-miscalibration signal (council Q0=A — the same "not a fair test"
+   * principle that skips a cancelled turn, ADR-036 A5). Drift covers both api
+   * real cost and cli shadow cost (accuracy signal, not billing). Fail-open: a
+   * write error never breaks the turn. Absent → no reconciliation.
+   */
+  calibration?: CalibrationLog;
   /** Optional audit trail for hard-floor blocks + approval decisions. */
   audit?: AuditRecorder;
   /** Default iteration cap when the request omits `maxIterations`. Default 10. */
@@ -236,6 +255,31 @@ export class AgentTurnHandler {
         ? await resolveSystemPrompt(base, this.deps.loadGuidelines)
         : base;
 
+      // Pre-send estimate (council Q1): emit the iteration-1 cost range BEFORE
+      // the first token so the composer can show it while the loop runs. Built
+      // from the SAME shape iteration 1 streams — the seed `messages` plus the
+      // mode-filtered `toolDefs` and the composed `system` — so the estimate
+      // counts everything the model is billed for on the first request (council
+      // trap: estimating before tool/system composition would undercount). The
+      // range is captured in a TURN-LOCAL (never a handler field) so the
+      // finalize-point reconciliation tests THIS turn's estimate — no stale
+      // leakage across reused handlers. Best-effort: skipped when pricing / a
+      // known model / a local token count is unavailable, never breaks the turn.
+      const estimateRequest: LlmRequest = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+        ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
+        ...(system ? { system } : {}),
+      };
+      const estimateRange = await this.maybeEmitEstimate(
+        messageId,
+        estimateRequest,
+        backend,
+        model,
+        emit,
+      );
+
       const aggUsage: LlmUsage = { input_tokens: 0, output_tokens: 0 };
       const changedFiles: string[] = [];
       // Durable code-suggestion annotations, accumulated across every tool call
@@ -337,6 +381,18 @@ export class AgentTurnHandler {
         usage: aggUsage,
         cost,
         durationMs: Date.now() - startedAt,
+      });
+      // Reconcile aggregated real cost vs the pre-flight estimate (T-706). Same
+      // finalize point + once-semantics as recordSpend/recordStep; skips a
+      // cancelled turn, a turn with no estimate, AND a multi-iteration turn
+      // (council Q0=A — only a single-iteration turn is a fair test of a
+      // single-iteration estimate). Fail-open.
+      await this.maybeReconcile({
+        conversationId: req.conversationId,
+        estimate: estimateRange,
+        cost,
+        cancelled: token.isCancelled,
+        iterations,
       });
 
       // One `annotations` union for the turn: the context snippets the model
@@ -560,6 +616,76 @@ export class AgentTurnHandler {
     return toToolResultPart(call, 'tool did not execute', true);
   }
 
+  /**
+   * Emit the iteration-1 pre-send estimate as an early `done:false` envelope AND
+   * return the underlying {@link CostRange} so the finalize point can reconcile
+   * the real cost against it (T-706) without a second `countInputTokens` call.
+   * The `estimate` key is the third `done:false` shape on the `agentTurn` stream
+   * (`token` / `estimate` / `toolEvent`, distinguished by key presence — the
+   * protocol reserves it, reusing the {@link ChatEstimate} wire shape, so no
+   * schema change). No-op (→ `undefined`) unless a pricing book, a known model,
+   * and a local `countInputTokens` are all present. Fail-open: any error here is
+   * swallowed (→ `undefined`) so the turn still runs (a provider token counter
+   * may reject tool schemas even though streaming would accept them).
+   */
+  private async maybeEmitEstimate(
+    messageId: string,
+    request: LlmRequest,
+    backend: LlmBackend,
+    model: string,
+    emit: EnvelopeSink,
+  ): Promise<CostRange | undefined> {
+    const pricing = this.deps.pricing;
+    if (!pricing || !pricing.getModel(model) || !backend.countInputTokens) return undefined;
+    try {
+      const inputTokens = await backend.countInputTokens(request);
+      if (inputTokens === undefined) return undefined;
+      const range = estimateCost(pricing, {
+        model,
+        inputTokens,
+        maxOutputTokens: request.max_tokens ?? DEFAULT_MAX_TOKENS,
+      });
+      const estimate: ChatEstimate = toWireEstimate(range);
+      emit({ messageId, messageType: 'agentTurn', data: { estimate }, done: false });
+      return range;
+    } catch {
+      // Best-effort: a failed estimate must never break the turn.
+      return undefined;
+    }
+  }
+
+  /**
+   * Reconcile the turn's aggregated real cost against its pre-flight estimate
+   * (T-706, ADR-037, council Q0=A). No-op unless a {@link CalibrationLog} is
+   * injected, a pre-flight estimate range was produced, the turn ran exactly one
+   * streamed LLM request (`iterations === 1` — a multi-iteration loop is not a
+   * fair test of a single-iteration estimate, council Q0=A), and the turn was
+   * not cancelled (a partial spend is not a fair test either, ADR-036 A5). The
+   * raw `cost.totalUsd` is used regardless of `isEstimate`, so cli shadow cost is
+   * reconciled too (drift is an accuracy signal, not a billing event). The log
+   * only appends an event on over-threshold drift. Fail-open: a write error
+   * never breaks the turn.
+   */
+  private async maybeReconcile(input: {
+    conversationId: string;
+    estimate: CostRange | undefined;
+    cost: ChatCost;
+    cancelled: boolean;
+    iterations: number;
+  }): Promise<void> {
+    const log = this.deps.calibration;
+    if (!log || !input.estimate || input.cancelled || input.iterations !== 1) return;
+    try {
+      await log.reconcile({
+        conversationId: input.conversationId,
+        estimate: input.estimate,
+        realUsd: input.cost.totalUsd,
+      });
+    } catch {
+      // Best-effort: a calibration write must never break the turn.
+    }
+  }
+
   private async recordSpend(
     cost: ChatCost,
     conversationId: string,
@@ -760,6 +886,16 @@ function toWireBudget(s: BudgetStatus): ChatBudgetStatus {
     ratio: s.ratio,
     overBudget: s.overBudget,
     warning: s.warning,
+  };
+}
+
+function toWireEstimate(range: CostRange): ChatEstimate {
+  return {
+    model: range.model,
+    inputTokens: range.inputTokens,
+    lowerUsd: range.lowerUsd,
+    upperUsd: range.upperUsd,
+    typicalUsd: range.typicalUsd,
   };
 }
 
