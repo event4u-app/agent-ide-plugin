@@ -13,6 +13,7 @@ import { LanguageRegistry } from './context/languages.js';
 import { FileGuidelinesStore, type GuidelinesStore } from './guidelines/guidelines.js';
 import { GitHandler } from './git/handler.js';
 import { ProviderRegistry } from './llm/provider-registry.js';
+import { AuditLog, type AuditRecorder } from './permissions/audit.js';
 import { PermissionGate } from './permissions/gate.js';
 import type { PricingBook } from './pricing/loader.js';
 import { PLUGIN_STATE_DIR } from './sessions/locations.js';
@@ -79,6 +80,15 @@ export interface BuildCoreOptions {
    * system prompt (T-1307).
    */
   guidelines?: GuidelinesStore;
+  /**
+   * Permission-audit recorder override (tests). Defaults to an {@link AuditLog}
+   * under `<cwd>/<state>/audit` (date-rotated `audit-<YYYY-MM-DD>.jsonl`, T-PRD05,
+   * ADR-038). Injected into the agent turn so the approval orchestrator records
+   * every hard-floor block + user decision (`grant_once` / `grant_always` /
+   * `deny_user` / `deny_hard_floor`); writes are fail-open. The chat turn has no
+   * approval path, so it gets no recorder. Constructed once per dispatcher.
+   */
+  audit?: AuditRecorder;
 }
 
 /** Top-k context snippets retrieved per chat turn (T-MR13). */
@@ -116,6 +126,16 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   // no I/O until an over-threshold turn appends an event.
   const calibration =
     options.calibration ?? new CalibrationLog({ baseDir: join(cwd, PLUGIN_STATE_DIR, 'tracking') });
+
+  // Permission-audit trail (T-PRD05 wiring, ADR-038). Constructed ONCE here —
+  // its own sibling dir under the plugin state dir (audit is neither cost nor
+  // generic tracking; AI council 2026-06-02 Q1=A). The recorder + its four
+  // call sites in `runToolCallWithApproval` shipped tested (ADR-014); only this
+  // composition root never built one, so the production trail was dead. Writes
+  // are fail-open (a torn append must never break a turn); no I/O until the
+  // first recorded decision. Injected into the agent turn only (the chat turn
+  // has no approval path).
+  const audit = options.audit ?? new AuditLog({ dir: join(cwd, PLUGIN_STATE_DIR, 'audit') });
 
   // One coordinator instance drives BOTH the dispatcher's workspace lifecycle
   // and the chat handler's scoped retrieval (T-MR13) — they MUST share state so
@@ -186,6 +206,11 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     // reconciles only single-iteration turns (council Q0=A) — a multi-iteration
     // loop is not a fair test of a single-iteration pre-flight estimate.
     calibration,
+    // Permission-audit recorder (T-PRD05, ADR-038). The approval orchestrator
+    // records hard-floor blocks + user decisions; with the default deny-`decide`
+    // every denied write/run already produces a `deny_user` / `deny_hard_floor`
+    // row, so the trail is live the moment a tool is gated.
+    audit,
   });
 
   // Live-terminal handler (T-PRD03) — the read path over the SAME manager the
