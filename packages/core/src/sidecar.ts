@@ -6,6 +6,7 @@ import { FileConversationStore, type ConversationStore } from './chat/store.js';
 import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
 import { CalibrationLog } from './cost/reconcile.js';
 import { DefaultCostReporter, type CostReporter } from './cost/report.js';
+import { CapsEvaluator, type CapsSettings } from './tracking/caps.js';
 import { TrackingDb } from './tracking/db.js';
 import type { StepRecorder } from './tracking/step-recorder.js';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
@@ -54,6 +55,17 @@ export interface BuildCoreOptions {
   cost?: { dailyBudgetUsd?: number | null; warningThresholdRatio?: number };
   /** Budget recorder override (tests). Takes precedence over `cost`. */
   budget?: BudgetRecorder;
+  /**
+   * Cost-cap settings (T-411a host integration, ADR-041). When set AND a
+   * {@link pricing} book is present, a {@link CapsEvaluator} is built over the
+   * same tracking trail and injected into both turn handlers so a `block` cap
+   * refuses a turn pre-send (`hard_block_above_usd`) and `warn`/`confirm` ride
+   * the pre-send estimate event. Read from `.agent-settings.yml :: tracking.caps`
+   * by the IDE-runtime wiring. Omitted / no pricing → no cap gate.
+   */
+  caps?: CapsSettings;
+  /** Caps-evaluator override (tests). Takes precedence over `caps`. */
+  capsEvaluator?: CapsEvaluator;
   /**
    * Step-event recorder override (tests). Defaults to a {@link TrackingDb} under
    * `<cwd>/<state>/tracking`; both turn handlers persist one priced step per
@@ -137,6 +149,20 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   // has no approval path).
   const audit = options.audit ?? new AuditLog({ dir: join(cwd, PLUGIN_STATE_DIR, 'audit') });
 
+  // Pre-send cost-cap evaluator (T-411a host integration, ADR-041). The
+  // evaluator + its review-pipeline consumer shipped tested but no composition
+  // root ever built one for the chat/agent send path → the whole cap subsystem
+  // was dead. Built only when caps settings AND a pricing book are present
+  // (the projection needs `requireModel`); reads the SAME `tracking` trail for
+  // the daily-window total. Injected into both turn handlers so a `block` cap
+  // refuses a turn pre-send and `warn`/`confirm` ride the estimate event. With
+  // no caps configured (the default) the evaluator returns `allow` — inert.
+  const capsEvaluator =
+    options.capsEvaluator ??
+    (options.caps && options.pricing
+      ? new CapsEvaluator(options.caps, options.pricing, tracking)
+      : undefined);
+
   // One coordinator instance drives BOTH the dispatcher's workspace lifecycle
   // and the chat handler's scoped retrieval (T-MR13) — they MUST share state so
   // a turn retrieves against the same live index the connect handshake built.
@@ -155,6 +181,7 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     ...(budget ? { budget } : {}),
     step,
     calibration,
+    ...(capsEvaluator ? { capsEvaluator } : {}),
   });
 
   // Git-loop handler — shares the registry; the diff/log are read from the
@@ -211,6 +238,10 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     // every denied write/run already produces a `deny_user` / `deny_hard_floor`
     // row, so the trail is live the moment a tool is gated.
     audit,
+    // Same cost-cap evaluator as the chat handler (T-411a, ADR-041). The agent
+    // turn gates once before the loop on the iteration-1 projection — the bigger
+    // spender, so the hard cap matters most here.
+    ...(capsEvaluator ? { capsEvaluator } : {}),
   });
 
   // Live-terminal handler (T-PRD03) — the read path over the SAME manager the

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { Envelope, LlmRequest, LlmStreamEvent } from '@event4u-agent/protocol';
 import type { LlmBackend } from './llm/backend.js';
 import { ProviderRegistry, type ProviderSpec } from './llm/provider-registry.js';
+import { PricingBook } from './pricing/loader.js';
 import { InMemoryConversationStore } from './chat/store.js';
 import { Dispatcher } from './server.js';
 import { buildCoreDispatcher } from './sidecar.js';
@@ -208,6 +209,72 @@ describe('buildCoreDispatcher — chatSend wiring', () => {
     );
 
     dispatcher.dispose();
+  });
+});
+
+const CAPS_BOOK = `
+version: 1
+last_updated: '2026-06-02'
+currency: USD
+models:
+  - id: claude-sonnet-4-6
+    family: anthropic
+    input_per_mtok: 3.00
+    output_per_mtok: 15.00
+    context_window: 200000
+`;
+
+/** A scripted backend with an input-token counter so the caps projection runs. */
+const countingSpec = (): ProviderSpec => ({
+  id: 'anthropic',
+  defaultModel: 'claude-sonnet-4-6',
+  modelEnv: 'EVENT4U_ANTHROPIC_MODEL',
+  build: () => ({
+    id: 'fake',
+    mode: 'api',
+    async *stream(): AsyncIterable<LlmStreamEvent> {
+      yield { kind: 'text_delta', text: 'hi' };
+      yield { kind: 'stop', reason: 'end_turn', usage: { input_tokens: 4, output_tokens: 2 } };
+    },
+    countInputTokens: async () => 1_000_000, // ≈ $3.03 projected
+  }),
+});
+
+describe('buildCoreDispatcher — cost-cap gate wiring (T-411a, ADR-041)', () => {
+  it('constructs a caps evaluator from the caps option that blocks a turn pre-send', async () => {
+    const registry = new ProviderRegistry({
+      env: {},
+      providers: [countingSpec()],
+      defaultProvider: 'anthropic',
+    });
+    const dispatcher = buildCoreDispatcher({
+      registry,
+      store: new InMemoryConversationStore(),
+      pricing: PricingBook.parse(CAPS_BOOK),
+      caps: { single_step: { hard_block_above_usd: 0.5 }, daily: {} },
+    });
+
+    const terminal = await dispatcher.dispatch(sendEnv('c-caps', 'hi'), () => {});
+    expect(terminal.messageType).toBe('chatSend');
+    const data = terminal.data as { stopReason: string; cap?: { verdict: string } };
+    expect(data.stopReason).toBe('cost_cap_blocked');
+    expect(data.cap?.verdict).toBe('block');
+  });
+
+  it('does NOT gate when no caps option is set (evaluator not constructed)', async () => {
+    const registry = new ProviderRegistry({
+      env: {},
+      providers: [countingSpec()],
+      defaultProvider: 'anthropic',
+    });
+    const dispatcher = buildCoreDispatcher({
+      registry,
+      store: new InMemoryConversationStore(),
+      pricing: PricingBook.parse(CAPS_BOOK),
+    });
+
+    const terminal = await dispatcher.dispatch(sendEnv('c-nocaps', 'hi'), () => {});
+    expect((terminal.data as { text: string }).text).toBe('hi');
   });
 });
 

@@ -4,6 +4,7 @@ import {
   AgentTurnRequestSchema,
   AgentTurnResponseSchema,
   AnnotationSchema,
+  CapVerdictSchema,
   ChatBudgetStatusSchema,
   ChatCostSchema,
   ChatEstimateEventSchema,
@@ -645,6 +646,70 @@ describe('chat cost & budget wire schemas (T-PRD06)', () => {
       },
     });
     expect(withBudget.budget?.remainingUsd).toBe(9);
+  });
+});
+
+describe('cost-cap verdict wire schema (T-411a, ADR-041)', () => {
+  it('parses a minimal block verdict (single_step)', () => {
+    const cap = CapVerdictSchema.parse({
+      verdict: 'block',
+      reason: 'single_step.hard_block_above_usd',
+      projectedUsd: 3.03,
+    });
+    expect(cap.verdict).toBe('block');
+    expect(cap.spentTodayUsd).toBeUndefined();
+  });
+
+  it('carries spentTodayUsd when a daily cap fired', () => {
+    const cap = CapVerdictSchema.parse({
+      verdict: 'confirm',
+      reason: 'daily.confirm_above_usd',
+      projectedUsd: 0.5,
+      spentTodayUsd: 4.2,
+    });
+    expect(cap.spentTodayUsd).toBe(4.2);
+  });
+
+  it('rejects an unknown verdict (strict enum — no silent allow)', () => {
+    expect(() => CapVerdictSchema.parse({ verdict: 'maybe', projectedUsd: 1 })).toThrow();
+  });
+
+  it('rides the pre-send estimate event for warn/confirm (additive optional)', () => {
+    const base = {
+      estimate: { model: 'm', inputTokens: 1000, lowerUsd: 0.01, upperUsd: 0.12, typicalUsd: 0.04 },
+    };
+    expect(ChatEstimateEventSchema.parse(base).cap).toBeUndefined();
+    const withCap = ChatEstimateEventSchema.parse({
+      ...base,
+      cap: { verdict: 'warn', reason: 'single_step.warn_above_usd', projectedUsd: 3.03 },
+    });
+    expect(withCap.cap?.verdict).toBe('warn');
+  });
+
+  it('ChatSendResponse + AgentTurnResponse keep cap optional (older clients unchanged)', () => {
+    const chat = ChatSendResponseSchema.parse({
+      messageId: 'm1',
+      text: '',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      cost: { model: 'm', mode: 'api', totalUsd: 0, isEstimate: true },
+      cancelled: false,
+      stopReason: 'cost_cap_blocked',
+      cap: { verdict: 'block', reason: 'single_step.hard_block_above_usd', projectedUsd: 3.03 },
+    });
+    expect(chat.cap?.verdict).toBe('block');
+
+    const agent = AgentTurnResponseSchema.parse({
+      messageId: 'm1',
+      text: '',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      cost: { model: 'm', mode: 'api', totalUsd: 0, isEstimate: true },
+      changedFiles: [],
+      iterations: 0,
+      cancelled: false,
+      stopReason: 'cost_cap_blocked',
+      mode: 'edit',
+    });
+    expect(agent.cap).toBeUndefined(); // omitted parses fine
   });
 });
 
