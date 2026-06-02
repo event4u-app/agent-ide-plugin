@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { SidecarClient } from './sidecar-client.js';
 import { ChatController } from './chat-controller.js';
 import { mapWorkspaceFolders, mapWorkspaceFoldersChange } from './workspace-folders.js';
+import { IndexStatusController, presentIndexStatus } from './index-status.js';
 import { buildChatHtml } from './webview/chat-html.js';
 import { formatStatusbar } from './webview/cost-format.js';
 import type { ChatModelSnapshot, ConversationMode } from './webview/chat-model.js';
@@ -87,20 +88,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   status.show();
   context.subscriptions.push(status);
 
+  // T-1304 / T-PRD07 — index-status statusbar item (ADR-054). Display-only;
+  // fed by the connect/workspaceFoldersChanged replies + a `rootStatus` poll.
+  const indexStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 999);
+  indexStatus.text = presentIndexStatus([]).text;
+  indexStatus.show();
+  context.subscriptions.push(indexStatus);
+
   // T-MR09 — auto-enumerate the IDE window's open roots and keep the Core in
   // sync, with no user action (handles .code-workspace multi-folder, the
   // no-folder window, renames, order changes, duplicate basenames, and
   // virtual / remote URIs — `uri.toString()` is the stable id in every case).
-  sidecar ??= new SidecarClient(serverPath, undefined, resolveSidecarEnv());
+  const client = (sidecar ??= new SidecarClient(serverPath, undefined, resolveSidecarEnv()));
   try {
-    sidecar.start();
+    client.start();
   } catch {
     // Sidecar may already be running.
   }
-  void sidecar
+  // Capture the connect/change replies (`RootIndexStatus[]`) the client used to
+  // discard, and poll `rootStatus` while indexing (ADR-054).
+  const indexController = new IndexStatusController(
+    (messageType, data) => client.request(messageType, data),
+    (view) => {
+      indexStatus.text = view.text;
+      indexStatus.tooltip = view.tooltip;
+    },
+  );
+  context.subscriptions.push({ dispose: () => indexController.dispose() });
+  void client
     .request('connect', {
       workspaceFolders: mapWorkspaceFolders(vscode.workspace.workspaceFolders),
     })
+    .then((env) => indexController.applyReply(env.data))
     .catch(() => {
       // Core may still be starting; folders re-sync on the next change event.
     });
@@ -108,6 +127,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidChangeWorkspaceFolders((event) => {
       void sidecar
         ?.request('workspaceFoldersChanged', mapWorkspaceFoldersChange(event))
+        .then((env) => indexController.applyReply(env.data))
         .catch(() => {
           // Best-effort; the Core reconciles from the next event or reconnect.
         });
