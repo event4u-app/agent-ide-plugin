@@ -13,6 +13,7 @@ import { CalibrationLog } from './cost/reconcile.js';
 import { DefaultCostReporter, type CostReporter } from './cost/report.js';
 import { CapsEvaluator, type CapsSettings } from './tracking/caps.js';
 import { TrackingDb } from './tracking/db.js';
+import { createEmbedTracker } from './tracking/embed-tracker.js';
 import type { StepRecorder } from './tracking/step-recorder.js';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import { resolveActiveEmbedder, type EmbeddingsConfig } from './context/remote-embedder.js';
@@ -204,7 +205,19 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   // FakeEmbedder hash-vectors into the live RRF is worse than lexical alone (AI
   // council 2026-06-02 Q2=A). Embedding the index is the coordinator's job; the
   // retrieve path fails soft, so a remote 401/network error degrades to lexical.
-  const embedder = options.embeddings ? resolveActiveEmbedder(options.embeddings) : undefined;
+  // Embed cost-tracking (T-806 follow-up, ADR-053). A real remote embedder emits
+  // per-call token usage; with a pricing book present we turn each into a priced
+  // `context-compression` step event on the SAME `tracking` trail the chat/agent
+  // turns write to. TRACK-ONLY (council Q4=A) — the signal fires AFTER the call
+  // returns, so it never pre-gates; no pricing book ⇒ no tracker (the step's usd
+  // needs the book) and the embed still runs, just untracked.
+  const embedUsage =
+    options.pricing !== undefined
+      ? createEmbedTracker({ db: tracking, pricing: options.pricing, cwd })
+      : undefined;
+  const embedder = options.embeddings
+    ? resolveActiveEmbedder(options.embeddings, undefined, embedUsage)
+    : undefined;
 
   // One coordinator instance drives BOTH the dispatcher's workspace lifecycle
   // and the chat handler's scoped retrieval (T-MR13) — they MUST share state so
