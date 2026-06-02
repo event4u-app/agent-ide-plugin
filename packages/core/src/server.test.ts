@@ -7,6 +7,7 @@ import type { RootRegistry } from './context/roots.js';
 import type { LlmBackend } from './llm/backend.js';
 import type { GitRunner } from './commands/commit.js';
 import { GitHandler } from './git/handler.js';
+import { CommandHandler } from './commands/handler.js';
 
 const request = (messageType: string, data: unknown, messageId = 'r1'): Envelope => ({
   messageId,
@@ -284,5 +285,56 @@ describe('Dispatcher — costReport (ADR-035 Cost Dashboard backend)', () => {
     const res = await dispatcher.dispatch(request('costReport', {}));
     expect(res.messageType).toBe('error');
     expect(res.data).toMatchObject({ code: 'cost_not_configured' });
+  });
+});
+
+describe('Dispatcher — command palette (T-402 / T-1103, ADR-048)', () => {
+  const commandHandler = new CommandHandler({
+    loadNodes: () =>
+      Promise.resolve([
+        {
+          kind: 'command' as const,
+          name: 'commit',
+          absPath: '/repo/.augment/commands/commit.md',
+          relPath: 'commands/commit.md',
+          sourceRoot: '.augment' as const,
+          frontmatter: { description: 'Create a commit' },
+          body: '# Commit\nrun it',
+        },
+      ]),
+  });
+
+  const withCommands = () =>
+    new Dispatcher(
+      new WorkspaceCoordinator(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      commandHandler,
+    );
+
+  it('routes commandList to the injected handler', async () => {
+    const res = await withCommands().dispatch(request('commandList', {}));
+    expect(res.messageType).toBe('commandList');
+    expect(res.data).toMatchObject({
+      commands: [{ name: 'commit', description: 'Create a commit' }],
+      total: 1,
+    });
+  });
+
+  it('routes commandRead to the injected handler (local body)', async () => {
+    const res = await withCommands().dispatch(request('commandRead', { name: 'commit' }));
+    expect(res.messageType).toBe('commandRead');
+    expect(res.data).toMatchObject({ name: 'commit', source: 'local', body: '# Commit\nrun it' });
+  });
+
+  it('returns commands_not_configured when no command handler is wired', async () => {
+    const dispatcher = new Dispatcher();
+    const list = await dispatcher.dispatch(request('commandList', {}));
+    expect(list.messageType).toBe('error');
+    expect(list.data).toMatchObject({ code: 'commands_not_configured' });
   });
 });
