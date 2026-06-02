@@ -850,6 +850,61 @@ export const CommandReadResponseSchema = z.object({
 });
 export type CommandReadResponse = z.infer<typeof CommandReadResponseSchema>;
 
+// --- agent-config registry (T-401 / ADR-050) ----------------------------
+
+/** The artifact kinds the agent-config walker discovers. */
+export const ConfigKindSchema = z.enum(['skill', 'rule', 'command']);
+export type ConfigKind = z.infer<typeof ConfigKindSchema>;
+
+/**
+ * One agent-config artifact's metadata, for the IDE's skill picker / rules
+ * viewer / unified registry browser. Mirrors {@link CommandSummary} (the
+ * command-only sibling) and adds a `kind` so a single flat list can carry
+ * skills, rules, and commands together.
+ */
+export const ConfigSummarySchema = z.object({
+  /** `skill` / `rule` / `command`. */
+  kind: ConfigKindSchema,
+  /** Artifact name (slug), e.g. `commit` or `verify-before-complete`. */
+  name: z.string(),
+  /** First line of the frontmatter `description`, or the first heading; `''` if neither. */
+  description: z.string(),
+  /** Absolute source path for IDE click-through (local sidecar ↔ local IDE). */
+  path: z.string(),
+});
+export type ConfigSummary = z.infer<typeof ConfigSummarySchema>;
+
+export const ConfigListRequestSchema = z.object({
+  /**
+   * Optional kind filter. Absent → every discovered artifact (skills, then
+   * rules, then commands, alphabetical within each kind); a kind → only that
+   * kind. The command-only fuzzy-ranked palette lives on `commandList`; this
+   * is the plain registry listing.
+   */
+  kind: ConfigKindSchema.optional(),
+  /**
+   * Cap the number of results. Core additionally clamps to a hard ceiling so a
+   * large config tree cannot produce an oversized NDJSON line
+   * (sibling-consistency with `commandList` / `conversationList`).
+   */
+  limit: z.number().int().positive().optional(),
+});
+export type ConfigListRequest = z.infer<typeof ConfigListRequestSchema>;
+
+/**
+ * The wire projection of Core's agent-config index — the data path for the
+ * IDE's skill picker and rules viewer (the kinds `commandList` does not
+ * surface). Read-only: Core walks the agent-config tree once, groups it via
+ * `indexByKind`, and returns lightweight summaries; the IDE renders. `total`
+ * is the match count before the cap so a browser can show "showing N of M".
+ * Mirrors the established "Core returns data, the IDE renders it" shape.
+ */
+export const ConfigListResponseSchema = z.object({
+  items: z.array(ConfigSummarySchema),
+  total: z.number().int().nonnegative(),
+});
+export type ConfigListResponse = z.infer<typeof ConfigListResponseSchema>;
+
 // --- tool-call lifecycle + approval (product-readiness Phase 1) ----------
 
 /**
@@ -1339,6 +1394,7 @@ export const Methods = {
   costReport: { request: CostReportRequestSchema, response: CostReportResponseSchema },
   commandList: { request: CommandListRequestSchema, response: CommandListResponseSchema },
   commandRead: { request: CommandReadRequestSchema, response: CommandReadResponseSchema },
+  configList: { request: ConfigListRequestSchema, response: ConfigListResponseSchema },
 } as const;
 
 export type MethodName = keyof typeof Methods;

@@ -349,6 +349,7 @@ describe('method registry', () => {
       'chatSend',
       'commandList',
       'commandRead',
+      'configList',
       'connect',
       'conversationList',
       'conversationRewind',

@@ -427,6 +427,34 @@ const classes: DataClass[] = [
     ],
   },
 
+  // --- agent-config registry (T-401 / ADR-050) ------------------------
+  {
+    name: 'ConfigSummary',
+    doc: "An agent-config artifact's metadata (kind=skill/rule/command), for the IDE registry/picker.",
+    fields: [
+      { name: 'kind', kotlinType: 'String' },
+      { name: 'name', kotlinType: 'String' },
+      { name: 'description', kotlinType: 'String' },
+      { name: 'path', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'ConfigListRequest',
+    doc: 'List agent-config artifacts; absent kind lists all (skills, rules, commands). limit clamped by Core.',
+    fields: [
+      { name: 'kind', kotlinType: 'String?', default: 'null' },
+      { name: 'limit', kotlinType: 'Int?', default: 'null' },
+    ],
+  },
+  {
+    name: 'ConfigListResponse',
+    doc: 'Artifact summaries grouped by kind then name; total is the match count before the cap.',
+    fields: [
+      { name: 'items', kotlinType: 'List<ConfigSummary>' },
+      { name: 'total', kotlinType: 'Int' },
+    ],
+  },
+
   // --- agent turn: chat that edits files (product-readiness) -----------
   {
     name: 'AgentTurnRequest',
