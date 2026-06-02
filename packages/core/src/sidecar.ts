@@ -12,6 +12,7 @@ import { CapsEvaluator, type CapsSettings } from './tracking/caps.js';
 import { TrackingDb } from './tracking/db.js';
 import type { StepRecorder } from './tracking/step-recorder.js';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
+import { resolveActiveEmbedder, type EmbeddingsConfig } from './context/remote-embedder.js';
 import { LanguageRegistry } from './context/languages.js';
 import { FileGuidelinesStore, type GuidelinesStore } from './guidelines/guidelines.js';
 import { GitHandler } from './git/handler.js';
@@ -111,6 +112,19 @@ export interface BuildCoreOptions {
    * approval path, so it gets no recorder. Constructed once per dispatcher.
    */
   audit?: AuditRecorder;
+  /**
+   * Embeddings config for hybrid context retrieval (T-806 wiring, ADR-044).
+   * Read from `.agent-settings.yml :: context.embeddings` by `main.ts`. When it
+   * selects a REAL embedder (a keyed `voyage`/`openai`, or `local`), the shared
+   * {@link WorkspaceCoordinator}'s {@link ContextEngine} gets it via
+   * {@link resolveActiveEmbedder} and the vector half of every turn's hybrid
+   * retrieval goes live; `fake` / keyless / absent stays BM25-only. The whole
+   * vector subsystem (VectorStore, EmbeddingCache, embed-on-index) shipped
+   * tested but no composition root ever built an embedder, so it was dead in
+   * production. The `context.embeddings.apiKey` never crosses the protocol wire
+   * (it lives only in this in-process embedder) and is never logged.
+   */
+  embeddings?: EmbeddingsConfig;
 }
 
 /** Top-k context snippets retrieved per chat turn (T-MR13). */
@@ -181,10 +195,18 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
       ? new CapsEvaluator(options.caps, options.pricing, tracking)
       : undefined);
 
+  // Hybrid-retrieval embedder (T-806 wiring, ADR-044). `resolveActiveEmbedder`
+  // returns one ONLY for a real provider (keyed voyage/openai, or local) so a
+  // missing/`fake`/keyless config leaves the engine BM25-only — fusing
+  // FakeEmbedder hash-vectors into the live RRF is worse than lexical alone (AI
+  // council 2026-06-02 Q2=A). Embedding the index is the coordinator's job; the
+  // retrieve path fails soft, so a remote 401/network error degrades to lexical.
+  const embedder = options.embeddings ? resolveActiveEmbedder(options.embeddings) : undefined;
+
   // One coordinator instance drives BOTH the dispatcher's workspace lifecycle
   // and the chat handler's scoped retrieval (T-MR13) — they MUST share state so
   // a turn retrieves against the same live index the connect handshake built.
-  const coordinator = new WorkspaceCoordinator();
+  const coordinator = new WorkspaceCoordinator(embedder ? { embedder } : {});
 
   const chatHandler = new ChatHandler({
     resolveBackend: (providerId) => registry.resolveBackend(providerId),

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FakeEmbedder, TransformersEmbedder } from './embedder.js';
-import { RemoteEmbedder, createEmbedder } from './remote-embedder.js';
+import { RemoteEmbedder, createEmbedder, resolveActiveEmbedder } from './remote-embedder.js';
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return {
@@ -75,5 +75,35 @@ describe('createEmbedder', () => {
 
   it('builds the local TransformersEmbedder for provider=local', () => {
     expect(createEmbedder({ provider: 'local' })).toBeInstanceOf(TransformersEmbedder);
+  });
+});
+
+describe('resolveActiveEmbedder (composition-root gate, ADR-044)', () => {
+  it('returns undefined for an absent / empty config (stays BM25-only)', () => {
+    expect(resolveActiveEmbedder()).toBeUndefined();
+    expect(resolveActiveEmbedder({})).toBeUndefined();
+  });
+
+  it('returns undefined for provider=fake — never fuses fake vectors in prod', () => {
+    expect(resolveActiveEmbedder({ provider: 'fake' })).toBeUndefined();
+    expect(resolveActiveEmbedder({ provider: 'fake', dimensions: 128 })).toBeUndefined();
+  });
+
+  it('returns undefined for a keyless remote provider (no degraded fallback)', () => {
+    expect(resolveActiveEmbedder({ provider: 'voyage' })).toBeUndefined();
+    expect(resolveActiveEmbedder({ provider: 'openai' })).toBeUndefined();
+  });
+
+  it('builds a RemoteEmbedder only when a keyed remote provider is set', () => {
+    expect(resolveActiveEmbedder({ provider: 'voyage', apiKey: 'k' })).toBeInstanceOf(
+      RemoteEmbedder,
+    );
+    expect(resolveActiveEmbedder({ provider: 'openai', apiKey: 'k' })).toBeInstanceOf(
+      RemoteEmbedder,
+    );
+  });
+
+  it('builds the local TransformersEmbedder for provider=local', () => {
+    expect(resolveActiveEmbedder({ provider: 'local' })).toBeInstanceOf(TransformersEmbedder);
   });
 });

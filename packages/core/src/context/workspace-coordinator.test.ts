@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextSnippetAnnotation, WorkspaceFolder } from '@event4u-agent/protocol';
+import type { Embedder } from './embedder.js';
 import type { RootRegistry } from './roots.js';
 import {
   WorkspaceCoordinator,
@@ -215,5 +216,46 @@ describe('WorkspaceCoordinator — scoped retrieval (T-MR13)', () => {
 
     // Filtered to [] — NOT undefined ("all") — so no code context leaks in.
     expect(engine.retrieveCalls[0]?.rootIds).toEqual([]);
+  });
+});
+
+describe('WorkspaceCoordinator — embedder threading (T-806, ADR-044)', () => {
+  it('passes the embedder into the default ContextEngine so indexing embeds', async () => {
+    const embedCalls: number[] = [];
+    const spyEmbedder: Embedder = {
+      modelId: 'spy-8',
+      dimensions: 8,
+      async embed(texts: string[]): Promise<Float32Array[]> {
+        embedCalls.push(texts.length);
+        return texts.map(() => new Float32Array(8));
+      },
+    };
+    // No `engine` injected → the coordinator builds the REAL ContextEngine with
+    // this embedder; indexing a file must drive the embed-on-index path.
+    const coord = new WorkspaceCoordinator({
+      embedder: spyEmbedder,
+      debounceMs: 0,
+      readFile: async () => 'export function authenticateUser() {\n  return true;\n}\n',
+      walkerFactory: fakeWalkerFactory({ A: ['src/auth.ts'] }),
+    });
+    await coord.connect([folder('A')]);
+    await coord.whenIdle();
+
+    expect(embedCalls.length).toBeGreaterThan(0);
+  });
+
+  it('builds a BM25-only engine when no embedder is given (no embed calls)', async () => {
+    // A spy that would record if ever called, but it never is — without an
+    // embedder the engine has no vector store, so indexing skips embedding.
+    const coord = new WorkspaceCoordinator({
+      debounceMs: 0,
+      readFile: async () => 'export const x = 1;\n',
+      walkerFactory: fakeWalkerFactory({ A: ['src/a.ts'] }),
+    });
+    const status = await coord.connect([folder('A')]);
+    await coord.whenIdle();
+    // Indexing still completes (lexical) — the embedder is purely additive.
+    expect(status.every((s) => s.state === 'indexing')).toBe(true);
+    expect(coord.status().find((s) => s.stableId === 'A')?.state).toBe('ready');
   });
 });

@@ -37,6 +37,7 @@ commands:
       commands: { suggestion: { enabled: false, senior_gate: true } },
       mcp: { servers: [] },
       telemetry: { artifact_engagement: { enabled: false } },
+      context: { embeddings: {} },
     });
   });
 
@@ -173,5 +174,36 @@ describe('loadSettings', () => {
     const path = join(tempDir, 'bad.yml');
     await writeFile(path, 'llm:\n  default_mode: : :', 'utf8');
     await expect(loadSettings(path)).rejects.toThrow(AgentSettingsError);
+  });
+});
+
+describe('parseSettings :: context.embeddings (T-806, ADR-044)', () => {
+  it('defaults to an empty embeddings block (no provider → BM25-only)', () => {
+    expect(DEFAULT_SETTINGS.context.embeddings).toEqual({});
+    expect(parseSettings('').context.embeddings.provider).toBeUndefined();
+  });
+
+  it('maps the snake_case YAML block to the core camelCase EmbeddingsConfig', () => {
+    const yamlText = `
+context:
+  embeddings:
+    provider: voyage
+    model: voyage-code-3
+    dimensions: 1024
+    api_key: sk-test
+    endpoint: https://proxy.example.com/v1/embeddings
+`;
+    expect(parseSettings(yamlText).context.embeddings).toEqual({
+      provider: 'voyage',
+      model: 'voyage-code-3',
+      dimensions: 1024,
+      apiKey: 'sk-test',
+      endpoint: 'https://proxy.example.com/v1/embeddings',
+    });
+  });
+
+  it('keeps a keyless remote provider parseable (the gate lives in the core)', () => {
+    const parsed = parseSettings('context:\n  embeddings:\n    provider: openai\n');
+    expect(parsed.context.embeddings).toEqual({ provider: 'openai' });
   });
 });

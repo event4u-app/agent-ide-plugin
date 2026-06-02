@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z, type ZodType } from 'zod';
+import type { EmbeddingsConfig } from '../context/remote-embedder.js';
 
 /**
  * MVP-relevant subset of `.agent-settings.yml`. All other fields the consumer
@@ -122,6 +123,48 @@ const CommandsSchema = z
   .partial()
   .default({});
 
+/**
+ * T-806 — hybrid-retrieval embeddings. Selects the embedder that activates the
+ * vector half of context retrieval. A keyed `voyage`/`openai` or `local` turns
+ * it on; `fake` / keyless / absent stays BM25-only — the gate is
+ * `resolveActiveEmbedder` in the core (ADR-044). `api_key` is read here from the
+ * local settings file only; it never crosses the protocol wire and is not
+ * logged. YAML keys are snake_case; {@link toEmbeddingsConfig} maps them to the
+ * core's camelCase {@link EmbeddingsConfig}.
+ */
+const EmbeddingsSchema = z
+  .object({
+    provider: z.enum(['fake', 'local', 'voyage', 'openai']),
+    model: z.string().min(1),
+    dimensions: z.number().int().positive(),
+    api_key: z.string().min(1),
+    endpoint: z.string().url(),
+  })
+  .partial()
+  .default({});
+
+const ContextSchema = z
+  .object({
+    embeddings: EmbeddingsSchema,
+  })
+  .partial()
+  .default({});
+
+/**
+ * Map the snake_case YAML embeddings block to the core's camelCase
+ * {@link EmbeddingsConfig}, omitting absent keys (conditional spreads keep the
+ * result clean under `exactOptionalPropertyTypes` — no explicit `undefined`).
+ */
+function toEmbeddingsConfig(raw: z.infer<typeof EmbeddingsSchema>): EmbeddingsConfig {
+  return {
+    ...(raw.provider !== undefined ? { provider: raw.provider } : {}),
+    ...(raw.model !== undefined ? { model: raw.model } : {}),
+    ...(raw.dimensions !== undefined ? { dimensions: raw.dimensions } : {}),
+    ...(raw.api_key !== undefined ? { apiKey: raw.api_key } : {}),
+    ...(raw.endpoint !== undefined ? { endpoint: raw.endpoint } : {}),
+  };
+}
+
 export const AgentSettingsSchema = z
   .object({
     llm: LlmSchema,
@@ -130,6 +173,7 @@ export const AgentSettingsSchema = z
     commands: CommandsSchema,
     mcp: McpSchema,
     telemetry: TelemetrySchema,
+    context: ContextSchema,
   })
   .partial()
   .passthrough()
@@ -159,6 +203,9 @@ export const AgentSettingsSchema = z
       artifact_engagement: {
         enabled: parsed.telemetry?.artifact_engagement?.enabled ?? false,
       },
+    },
+    context: {
+      embeddings: toEmbeddingsConfig(parsed.context?.embeddings ?? {}),
     },
   }));
 
