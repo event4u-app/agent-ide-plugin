@@ -5,6 +5,8 @@ import {
   ChatSendRequestSchema,
   type ConnectResponse,
   ConnectRequestSchema,
+  type ConversationRewindResponse,
+  ConversationRewindRequestSchema,
   type CostReportResponse,
   CostReportRequestSchema,
   type Envelope,
@@ -34,7 +36,7 @@ import {
 } from '@event4u-agent/protocol';
 import { WorkspaceCoordinator } from './context/workspace-coordinator.js';
 import type { AgentTurnHandler } from './agent/turn-handler.js';
-import type { ChatHandler, EnvelopeSink } from './chat/handler.js';
+import { type ChatHandler, ChatRequestError, type EnvelopeSink } from './chat/handler.js';
 import { type CostReporter, CostRequestError } from './cost/report.js';
 import { type GitHandler, GitRequestError } from './git/handler.js';
 import { type TerminalHandler, TerminalRequestError } from './terminal/handler.js';
@@ -109,6 +111,9 @@ export class Dispatcher {
         this.requireGit().reviewSummary(GitReviewSummaryRequestSchema.parse(data ?? {})),
       gitReviewApplyFix: (data: unknown): Promise<GitReviewApplyFixResponse> =>
         this.requireGit().reviewApplyFix(GitReviewApplyFixRequestSchema.parse(data ?? {})),
+      // Conversation rewind (T-1303): pure non-mutating plan; the IDE applies it.
+      conversationRewind: (data: unknown): Promise<ConversationRewindResponse> =>
+        this.requireChat().rewind(ConversationRewindRequestSchema.parse(data ?? {})),
       // Cost Dashboard backend (T-707; ADR-035): aggregate the recorded step trail.
       costReport: (data: unknown): Promise<CostReportResponse> =>
         this.requireCost().report(CostReportRequestSchema.parse(data ?? {})),
@@ -130,6 +135,17 @@ export class Dispatcher {
       );
     }
     return this.gitHandler;
+  }
+
+  /** The chat handler or a coded error so absent wiring surfaces cleanly. */
+  private requireChat(): ChatHandler {
+    if (!this.chatHandler) {
+      throw new ChatRequestError(
+        'chat_not_configured',
+        'No chat handler is configured on this Core instance.',
+      );
+    }
+    return this.chatHandler;
   }
 
   /** The cost reporter or a coded error so absent wiring surfaces cleanly. */

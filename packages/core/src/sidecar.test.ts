@@ -6,6 +6,7 @@ import type { Envelope, LlmRequest, LlmStreamEvent } from '@event4u-agent/protoc
 import type { LlmBackend } from './llm/backend.js';
 import { ProviderRegistry, type ProviderSpec } from './llm/provider-registry.js';
 import { InMemoryConversationStore } from './chat/store.js';
+import { Dispatcher } from './server.js';
 import { buildCoreDispatcher } from './sidecar.js';
 
 /** A backend that streams fixed chunks then a stop event. */
@@ -207,5 +208,48 @@ describe('buildCoreDispatcher — chatSend wiring', () => {
     );
 
     dispatcher.dispose();
+  });
+});
+
+const rewindEnv = (conversationId: string, checkpointId: string): Envelope => ({
+  messageId: 'rw1',
+  messageType: 'conversationRewind',
+  data: { conversationId, checkpointId },
+  done: true,
+});
+
+describe('buildCoreDispatcher — conversationRewind wiring (T-1303)', () => {
+  it('routes conversationRewind to the chat handler and returns a found plan', async () => {
+    const registry = new ProviderRegistry({
+      env: {},
+      providers: [scriptedSpec(['ok'])],
+      defaultProvider: 'anthropic',
+    });
+    const store = new InMemoryConversationStore();
+    await store.create({ id: 'c1' });
+    await store.appendMessage('c1', { role: 'user', content: 'one' });
+    await store.recordCheckpoint('c1', { id: 'cp1', changedFiles: ['src/a.ts'] });
+    const dispatcher = buildCoreDispatcher({ registry, store });
+
+    const terminal = await dispatcher.dispatch(rewindEnv('c1', 'cp1'), () => {});
+
+    expect(terminal.messageType).toBe('conversationRewind');
+    expect(terminal.done).toBe(true);
+    expect(terminal.data).toMatchObject({
+      conversationId: 'c1',
+      checkpointId: 'cp1',
+      found: true,
+      targetTurnIndex: 1,
+      changedFiles: ['src/a.ts'],
+    });
+
+    dispatcher.dispose();
+  });
+
+  it('returns chat_not_configured when no chat handler is wired', async () => {
+    const dispatcher = new Dispatcher();
+    const res = await dispatcher.dispatch(rewindEnv('c1', 'cp1'), () => {});
+    expect(res.messageType).toBe('error');
+    expect(res.data).toMatchObject({ code: 'chat_not_configured' });
   });
 });

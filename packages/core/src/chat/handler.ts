@@ -8,6 +8,8 @@ import type {
   ChatMessage,
   ContextScope,
   ContextSnippetAnnotation,
+  ConversationRewindRequest,
+  ConversationRewindResponse,
   Envelope,
   LlmMode,
   LlmRequest,
@@ -23,6 +25,7 @@ import { CancellationToken } from '../llm/cancellation.js';
 import type { PricingBook } from '../pricing/loader.js';
 import { buildStepEvent, type StepRecorder } from '../tracking/step-recorder.js';
 import { buildContextInjection } from './context-injection.js';
+import { planRewind } from './rewind.js';
 import type { ConversationStore } from './store.js';
 import { resolveSystemPrompt, type LoadGuidelines } from './system-prompt.js';
 
@@ -67,6 +70,21 @@ export class ChatBusyError extends Error {
   constructor(conversationId: string) {
     super(`A turn is already in flight for conversation "${conversationId}".`);
     this.name = 'ChatBusyError';
+  }
+}
+
+/**
+ * A coded chat error so the dispatcher surfaces a specific `code` (not the
+ * generic `handler_error`), mirroring {@link GitRequestError}. Used for a true
+ * fault — e.g. a rewind request naming a conversation the store has never seen.
+ */
+export class ChatRequestError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ChatRequestError';
   }
 }
 
@@ -145,6 +163,43 @@ export class ChatHandler {
   /** Whether a turn is currently in flight for the conversation. */
   isActive(conversationId: string): boolean {
     return this.active.has(conversationId);
+  }
+
+  /**
+   * Plan a rewind to a checkpoint (T-1303). Pure and non-mutating: loads the
+   * conversation, runs {@link planRewind}, and projects the plan onto the wire.
+   * Core has no file-restore authority — the IDE consumes this plan and restores
+   * the conversation view + (via its own VCS/undo) the files.
+   *
+   * Per the AI council (codex-cli + gemini-cli, 2026-06-02): an unknown
+   * `conversationId` is a true fault → `conversation_not_found` (gemini A); an
+   * unknown `checkpointId` on an existing conversation is expected state
+   * (checkpoints are not yet auto-recorded) → `found:false` (codex B). The opaque
+   * `workState` and the full message bodies are deliberately NOT projected onto
+   * the wire (Q1=A / Q2=A) — the IDE slices `[0, targetTurnIndex)` from the
+   * conversation it already holds.
+   */
+  async rewind(req: ConversationRewindRequest): Promise<ConversationRewindResponse> {
+    const conversation = await this.deps.store.load(req.conversationId);
+    if (!conversation) {
+      throw new ChatRequestError(
+        'conversation_not_found',
+        `No conversation on record for id "${req.conversationId}".`,
+      );
+    }
+    const plan = planRewind(conversation, req.checkpointId);
+    if (!plan) {
+      // Expected state — the checkpoint id is not on this conversation.
+      return { conversationId: req.conversationId, checkpointId: req.checkpointId, found: false };
+    }
+    return {
+      conversationId: plan.conversationId,
+      checkpointId: plan.checkpointId,
+      found: true,
+      targetTurnIndex: plan.targetTurnIndex,
+      changedFiles: plan.changedFiles,
+      warnings: plan.warnings,
+    };
   }
 
   /**
