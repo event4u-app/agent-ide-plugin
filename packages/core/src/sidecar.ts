@@ -190,6 +190,13 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     resolveBackend: (providerId) => registry.resolveBackend(providerId),
     resolveModel: (providerId) => registry.resolveModel(providerId),
     defaultCwd: cwd,
+    // Share the live cost stack so `gitReviewSummary` records priced
+    // `activity:"review"` step events and respects hard caps (T-CR-206). The
+    // observer is built only when a pricing book is present (recording no-ops
+    // otherwise — the same gate the chat/agent step recorder uses).
+    tracking,
+    ...(options.pricing ? { pricing: options.pricing } : {}),
+    ...(capsEvaluator ? { caps: capsEvaluator } : {}),
   });
 
   // One terminal session manager, shared between the `run_shell` agent tool

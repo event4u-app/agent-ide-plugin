@@ -1,10 +1,13 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { LlmRequest, LlmStreamEvent } from '@event4u-agent/protocol';
 import type { LlmBackend } from '../llm/backend.js';
 import type { GitRunner } from '../commands/commit.js';
+import { TrackingDb } from '../tracking/db.js';
+import { CapsEvaluator } from '../tracking/caps.js';
+import { PricingBook } from '../pricing/loader.js';
 import { GitHandler, GitRequestError } from './handler.js';
 
 /**
@@ -161,6 +164,90 @@ describe('GitHandler.reviewSummary', () => {
       'info',
     ]);
     expect(res.findingsBySeverity.every((s) => s.count === 0)).toBe(true);
+  });
+});
+
+describe('GitHandler.reviewSummary — tracked observer wiring (T-CR-206)', () => {
+  const PRICING_YAML = `
+version: 3
+last_updated: '2026-05-29'
+currency: USD
+models:
+  - id: claude-sonnet-4-6
+    family: anthropic
+    input_per_mtok: 3.00
+    output_per_mtok: 15.00
+    context_window: 200000
+subscriptions: []
+`;
+  const pricing = PricingBook.parse(PRICING_YAML);
+
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'event4u-git-review-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  function trackedHandler(extra: { caps?: CapsEvaluator } = {}): {
+    handler: GitHandler;
+    tracking: TrackingDb;
+  } {
+    const tracking = new TrackingDb({ baseDir: dir });
+    const handler = new GitHandler({
+      resolveBackend: () => scriptedBackend(''),
+      resolveModel: () => 'claude-sonnet-4-6',
+      defaultCwd: '/repo',
+      runner: fakeRunner(),
+      tracking,
+      pricing,
+      ...(extra.caps ? { caps: extra.caps } : {}),
+    });
+    return { handler, tracking };
+  }
+
+  it('records a priced activity:"review" step event under a stable review:<cwd> id', async () => {
+    const { handler, tracking } = trackedHandler();
+    const res = await handler.reviewSummary({ cwd: '/repo', source: 'unstaged' });
+    expect(res.filesChanged).toBe(1);
+
+    const steps = await tracking.readSteps();
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.every((s) => s.activity === 'review')).toBe(true);
+    expect(steps.every((s) => s.conversation_id === 'review:/repo')).toBe(true);
+    expect(steps.every((s) => s.mode === 'api')).toBe(true);
+    // Priced from the pricing book → a non-negative cost is recorded.
+    expect(steps.every((s) => typeof s.usd === 'number')).toBe(true);
+    expect(steps.every((s) => s.pricing_book_version === 3)).toBe(true);
+  });
+
+  it('blocks a cap-blowing review and surfaces a coded cost_cap_blocked error', async () => {
+    // hard_block at $0 → any positive projection trips the gate pre-stage.
+    const caps = new CapsEvaluator(
+      { single_step: { hard_block_above_usd: 0 }, daily: {} },
+      pricing,
+    );
+    const { handler, tracking } = trackedHandler({ caps });
+    await expect(handler.reviewSummary({ cwd: '/repo', source: 'unstaged' })).rejects.toMatchObject(
+      { name: 'GitRequestError', code: 'cost_cap_blocked' },
+    );
+    // Blocked PRE-stage → no spend recorded.
+    expect(await tracking.readSteps()).toEqual([]);
+  });
+
+  it('runs untracked (no throw, no step events) when no pricing book is present', async () => {
+    const tracking = new TrackingDb({ baseDir: dir });
+    const handler = new GitHandler({
+      resolveBackend: () => scriptedBackend(''),
+      resolveModel: () => 'claude-sonnet-4-6',
+      defaultCwd: '/repo',
+      runner: fakeRunner(),
+      tracking, // pricing absent → observer not built (recording no-ops gate)
+    });
+    const res = await handler.reviewSummary({ cwd: '/repo', source: 'unstaged' });
+    expect(res.filesChanged).toBe(1);
+    expect(await tracking.readSteps()).toEqual([]);
   });
 });
 
