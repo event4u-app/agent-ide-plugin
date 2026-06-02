@@ -112,3 +112,30 @@ export function createEmbedder(config: EmbeddingsConfig = {}, fetchFn?: FetchFn)
 function defaultRemoteModel(provider: 'voyage' | 'openai'): string {
   return provider === 'voyage' ? 'voyage-code-3' : 'text-embedding-3-small';
 }
+
+/**
+ * Composition-root gate (ADR-044) — return a configured embedder ONLY when the
+ * config selects a REAL one, else `undefined` so {@link ContextEngine} stays
+ * BM25-only. Unlike {@link createEmbedder} (which always returns *some* embedder,
+ * falling back to {@link FakeEmbedder}), the live sidecar must never fuse
+ * meaningless `FakeEmbedder` hash-vectors into the production RRF — that is worse
+ * than clean lexical-only retrieval (AI council 2026-06-02 Q2=A). `fake` and a
+ * keyless `voyage`/`openai` therefore yield `undefined`; `local` and a keyed
+ * remote yield the real embedder (Q3=A — `local`'s optional `@huggingface/
+ * transformers` is dynamic-imported only on first embed, and the retrieve path
+ * fails soft, so a missing dep degrades to BM25 rather than crashing).
+ */
+export function resolveActiveEmbedder(
+  config: EmbeddingsConfig = {},
+  fetchFn?: FetchFn,
+): Embedder | undefined {
+  switch (config.provider) {
+    case 'local':
+      return createEmbedder(config, fetchFn);
+    case 'voyage':
+    case 'openai':
+      return config.apiKey ? createEmbedder(config, fetchFn) : undefined;
+    default:
+      return undefined;
+  }
+}

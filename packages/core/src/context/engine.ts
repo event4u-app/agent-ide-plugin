@@ -1,6 +1,6 @@
 import type { ContextSnippetAnnotation } from '@event4u-agent/protocol';
 
-import { throwIfAborted } from '../abort.js';
+import { isAbortError, throwIfAborted } from '../abort.js';
 import { type BuildContextSnippetsOptions, buildContextSnippets } from './annotations.js';
 import { CodeRetriever, type SymbolMatch } from './bm25.js';
 import type { Embedder } from './embedder.js';
@@ -137,22 +137,33 @@ export class ContextEngine {
     seg.chunksByFile.set(filePath, refs);
 
     // Phase 8 — embed chunks (cache-deduped) into the vector store, if enabled.
+    // Fail soft (T-806 wiring, ADR-044): a real remote embedder can throw on a
+    // network error / 401, but embeddings are an optional enhancement over BM25,
+    // so an embed failure drops only this file's vector contribution — symbols +
+    // content + chunks are already indexed, so the file stays lexically
+    // retrievable and the turn never breaks. An abort is user intent (Stop), not
+    // a failure, and MUST propagate (`isAbortError`).
     if (this.embeddingCache && this.vectorStore && chunks.length > 0) {
-      const embeddings = await this.embeddingCache.embed(
-        chunks.map((c) => c.getText()),
-        signal,
-      );
-      this.vectorStore.setFileVectors(
-        rootId,
-        filePath,
-        chunks.map((c, i) => ({
-          chunkId: chunkRefKey(refs[i]!),
+      try {
+        const embeddings = await this.embeddingCache.embed(
+          chunks.map((c) => c.getText()),
+          signal,
+        );
+        this.vectorStore.setFileVectors(
+          rootId,
           filePath,
-          startLine: c.start,
-          endLine: c.end,
-          embedding: embeddings[i]!,
-        })),
-      );
+          chunks.map((c, i) => ({
+            chunkId: chunkRefKey(refs[i]!),
+            filePath,
+            startLine: c.start,
+            endLine: c.end,
+            embedding: embeddings[i]!,
+          })),
+        );
+      } catch (err) {
+        if (isAbortError(err)) throw err;
+        // Vector contribution skipped for this file; lexical index is intact.
+      }
     }
   }
 
@@ -351,7 +362,16 @@ export class ContextEngine {
     signal?: AbortSignal,
   ): Promise<RankedItem<ChunkRef>[]> {
     if (!this.vectorStore || !this.embedder) return [];
-    const [qVec] = await this.embedder.embed([query], signal);
+    let qVec: Float32Array | undefined;
+    try {
+      // Fail soft (ADR-044): an embed failure on the query drops the vector half
+      // for this retrieval, so the fusion falls back to the lexical ranking —
+      // the turn never breaks. An abort (Stop) is user intent and propagates.
+      [qVec] = await this.embedder.embed([query], signal);
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      return [];
+    }
     if (!qVec) return [];
     const hits = this.vectorStore.query(qVec, k, rootIds);
     return dedupeRanked(hits.map(vectorHitToChunkRef));

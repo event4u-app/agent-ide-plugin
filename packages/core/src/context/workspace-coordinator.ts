@@ -6,6 +6,7 @@ import type {
   RootIndexStatus,
   WorkspaceFolder,
 } from '@event4u-agent/protocol';
+import type { Embedder } from './embedder.js';
 import { ContextEngine } from './engine.js';
 import { CodeIndexer } from './indexer.js';
 import { LanguageRegistry } from './languages.js';
@@ -57,6 +58,15 @@ export interface RootWalker {
 export interface WorkspaceCoordinatorOptions {
   registry?: RootRegistry;
   engine?: IndexTarget;
+  /**
+   * Optional embedder for the default {@link ContextEngine} (T-806 wiring,
+   * ADR-044). Absent ⇒ the engine stays BM25-only (unchanged). Ignored when an
+   * explicit {@link engine} is injected (tests own that engine's wiring). The
+   * sidecar resolves this from `.agent-settings.yml :: context.embeddings` via
+   * {@link resolveActiveEmbedder}, so only a real (keyed remote / local)
+   * provider activates the vector half of hybrid retrieval.
+   */
+  embedder?: Embedder;
   /** Debounce window before a scheduled (re)index runs. Tests pass `0`. */
   debounceMs?: number;
   /** Reads an absolute path; overridable in tests. */
@@ -89,7 +99,9 @@ export class WorkspaceCoordinator {
 
   constructor(opts: WorkspaceCoordinatorOptions = {}) {
     this.registry = opts.registry ?? new RootRegistry();
-    this.engine = opts.engine ?? new ContextEngine(new CodeIndexer(new LanguageRegistry()));
+    this.engine =
+      opts.engine ??
+      new ContextEngine(new CodeIndexer(new LanguageRegistry()), { embedder: opts.embedder });
     this.debounceMs = opts.debounceMs ?? 2000;
     this.readFileFn = opts.readFile ?? ((p) => readFile(p, 'utf8'));
     const platform = opts.platform ?? process.platform;
