@@ -7,6 +7,7 @@ import type { LoadRules } from './chat/system-prompt.js';
 import { CommandHandler } from './commands/handler.js';
 import { createRulesLoader } from './commands/rules-loader.js';
 import { walkAgentConfig } from './config/agent-config-walker.js';
+import { ConfigHandler } from './config/handler.js';
 import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
 import { CalibrationLog } from './cost/reconcile.js';
 import { DefaultCostReporter, type CostReporter } from './cost/report.js';
@@ -310,8 +311,16 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   // resolves bodies from the local walker index (the documented offline path).
   const commandHandler = new CommandHandler({ loadNodes: () => walkAgentConfig(cwd) });
 
+  // Agent-config registry data path (T-401 / ADR-050) — the sibling of the
+  // command palette for the kinds it does not surface (skills + rules) plus a
+  // unified browser. Its own fail-open walk cache (not shared with the command
+  // handler) so a transient FS error can't disable the registry for the whole
+  // session.
+  const configHandler = new ConfigHandler({ loadNodes: () => walkAgentConfig(cwd) });
+
   // `undefined` keeps the default live onboarding probes (6th ctor arg); the
-  // cost reporter is the 7th (ADR-035); the command handler is the 8th (ADR-048).
+  // cost reporter is the 7th (ADR-035); the command handler is the 8th (ADR-048);
+  // the config handler is the 9th (ADR-050).
   return new Dispatcher(
     coordinator,
     chatHandler,
@@ -321,5 +330,6 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     undefined,
     costReporter,
     commandHandler,
+    configHandler,
   );
 }

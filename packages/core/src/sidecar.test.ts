@@ -359,3 +359,58 @@ describe('buildCoreDispatcher — command-palette wiring (T-402 / T-1103, ADR-04
     }
   });
 });
+
+describe('buildCoreDispatcher — config-registry wiring (T-401, ADR-050)', () => {
+  it('serves configList LIVE over the walked tree, surfacing skills + rules (not config_not_configured)', async () => {
+    // A temp workspace with a skill and a rule the command palette never surfaces.
+    const dir = await mkdtemp(join(tmpdir(), 'sidecar-config-'));
+    try {
+      await mkdir(join(dir, '.event4u-agent', 'skills'), { recursive: true });
+      await mkdir(join(dir, '.event4u-agent', 'rules'), { recursive: true });
+      await mkdir(join(dir, '.event4u-agent', 'commands'), { recursive: true });
+      await writeFile(
+        join(dir, '.event4u-agent', 'skills', 'laravel.md'),
+        '---\ndescription: Write Laravel PHP\n---\n# Laravel\n',
+      );
+      await writeFile(
+        join(dir, '.event4u-agent', 'rules', 'scope-control.md'),
+        '---\ndescription: Stay in scope\n---\n# Scope\n',
+      );
+      await writeFile(
+        join(dir, '.event4u-agent', 'commands', 'commit.md'),
+        '---\ndescription: Create a commit\n---\n# Commit\n',
+      );
+      const dispatcher = buildCoreDispatcher({
+        cwd: dir,
+        store: new InMemoryConversationStore(),
+      });
+
+      const all = await dispatcher.dispatch(
+        { messageId: 'm1', messageType: 'configList', data: {}, done: true },
+        () => {},
+      );
+      expect(all.messageType).toBe('configList'); // proves a ConfigHandler IS wired
+      expect(all.data).toMatchObject({
+        items: [
+          { kind: 'skill', name: 'laravel', description: 'Write Laravel PHP' },
+          { kind: 'rule', name: 'scope-control', description: 'Stay in scope' },
+          { kind: 'command', name: 'commit', description: 'Create a commit' },
+        ],
+        total: 3,
+      });
+
+      const skillsOnly = await dispatcher.dispatch(
+        { messageId: 'm2', messageType: 'configList', data: { kind: 'skill' }, done: true },
+        () => {},
+      );
+      expect(skillsOnly.data).toMatchObject({
+        items: [{ kind: 'skill', name: 'laravel' }],
+        total: 1,
+      });
+
+      dispatcher.dispose();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
