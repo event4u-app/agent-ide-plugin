@@ -3,6 +3,8 @@ import { buildDefaultToolRegistry } from './agent/tool-registry.js';
 import { AgentTurnHandler } from './agent/turn-handler.js';
 import { ChatHandler } from './chat/handler.js';
 import { FileConversationStore, type ConversationStore } from './chat/store.js';
+import type { LoadRules } from './chat/system-prompt.js';
+import { createRulesLoader } from './commands/rules-loader.js';
 import { DailyBudgetTracker, type BudgetRecorder } from './cost/budget.js';
 import { CalibrationLog } from './cost/reconcile.js';
 import { DefaultCostReporter, type CostReporter } from './cost/report.js';
@@ -93,6 +95,14 @@ export interface BuildCoreOptions {
    */
   guidelines?: GuidelinesStore;
   /**
+   * Always-active RULES loader override (tests). Defaults to a
+   * {@link createRulesLoader} that walks the agent-config tree under `<cwd>`
+   * once and renders the always-active rules (T-404, ADR-043). Both turn
+   * handlers fold its content AHEAD of guidelines into the per-turn system
+   * prompt so the agent's rules reach the model.
+   */
+  loadRules?: LoadRules;
+  /**
    * Permission-audit recorder override (tests). Defaults to an {@link AuditLog}
    * under `<cwd>/<state>/audit` (date-rotated `audit-<YYYY-MM-DD>.jsonl`, T-PRD05,
    * ADR-038). Injected into the agent turn so the approval orchestrator records
@@ -113,6 +123,14 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
   const store = options.store ?? new FileConversationStore(join(cwd, PLUGIN_STATE_DIR, 'chats'));
   const guidelines = options.guidelines ?? new FileGuidelinesStore(join(cwd, PLUGIN_STATE_DIR));
   const loadGuidelines = () => guidelines.load();
+  // Always-active RULES prepend (T-404 wiring, ADR-043). `walkAgentConfig` +
+  // `buildSystemPrompt` shipped tested but no composition root ever walked the
+  // config for rules → the agent's always-active rules never reached the model
+  // (the direct sibling of the guidelines wiring, ADR-024/PR #36). The loader
+  // walks the agent-config tree under `cwd` ONCE and caches (rules are
+  // session-static → cache-friendly prefix; AI council 2026-06-02 Q2=A);
+  // fail-open. Both handlers fold it ahead of guidelines + context.
+  const loadRules = options.loadRules ?? createRulesLoader(cwd);
 
   const budget =
     options.budget ??
@@ -174,6 +192,7 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     store,
     pricing: options.pricing,
     loadGuidelines,
+    loadRules,
     // Scoped-context retrieval (T-MR13): forward the turn's scope to the shared
     // coordinator, which resolves it against the live enabled roots.
     retrieveContext: (query, scope, signal) =>
@@ -230,6 +249,7 @@ export function buildCoreDispatcher(options: BuildCoreOptions = {}): Dispatcher 
     decide: () => Promise.resolve('deny'),
     pricing: options.pricing,
     loadGuidelines,
+    loadRules,
     // Scoped-context retrieval (T-MR13): same shared-coordinator callback as the
     // chat handler — the agent turn that EDITS files benefits most from grounding.
     retrieveContext: (query, scope, signal) =>

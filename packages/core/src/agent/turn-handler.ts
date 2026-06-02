@@ -20,7 +20,7 @@ import type {
 import { buildContextInjection } from '../chat/context-injection.js';
 import type { EnvelopeSink } from '../chat/handler.js';
 import type { ConversationStore } from '../chat/store.js';
-import { resolveSystemPrompt, type LoadGuidelines } from '../chat/system-prompt.js';
+import { resolveSystemPrompt, type LoadGuidelines, type LoadRules } from '../chat/system-prompt.js';
 import { isAbortError } from '../abort.js';
 import type { BudgetRecorder, BudgetStatus } from '../cost/budget.js';
 import { estimateCost, type CostRange } from '../cost/estimate.js';
@@ -195,6 +195,14 @@ export interface AgentTurnHandlerDeps {
    */
   loadGuidelines?: LoadGuidelines;
   /**
+   * Optional always-active RULES loader (T-404 wiring, ADR-043). Mirrors
+   * `ChatHandlerDeps.loadRules` so chat and agent turns get identical
+   * rules semantics (council parity trap). Folded ONCE per turn ahead of
+   * guidelines into the per-iteration system prompt; fail-open; absent → no
+   * rules (backward-compatible).
+   */
+  loadRules?: LoadRules;
+  /**
    * Optional scoped-context retriever (T-MR13, AI council 2026-06-01 + 2026-06-02,
    * UNANIMOUS A1/B1/C1/D1/E1). Mirrors `ChatHandlerDeps.retrieveContext`. When
    * set, the handler retrieves the top-k context snippets for the turn's
@@ -303,9 +311,14 @@ export class AgentTurnHandler {
       const annotations = await this.retrieveContext(req, token.signal);
       const injection = buildContextInjection(annotations);
       const base = composeAgentBase(this.deps.system, injection.system);
-      const system = this.deps.loadGuidelines
-        ? await resolveSystemPrompt(base, this.deps.loadGuidelines)
-        : base;
+      const system =
+        this.deps.loadGuidelines || this.deps.loadRules
+          ? await resolveSystemPrompt(
+              base,
+              this.deps.loadGuidelines ?? (async () => ''),
+              this.deps.loadRules,
+            )
+          : base;
 
       // Pre-send estimate (council Q1): emit the iteration-1 cost range BEFORE
       // the first token so the composer can show it while the loop runs. Built
