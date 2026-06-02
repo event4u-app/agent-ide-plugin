@@ -48,6 +48,11 @@ import { defaultGitRunner, type GitRunner } from '../commands/commit.js';
 import { buildFixEdit } from '../review/apply-fix.js';
 import { getDiff, type DiffSource } from '../review/diff-source.js';
 import { runReview } from '../review/run.js';
+import { createTrackedReviewObserver } from '../review/observer.js';
+import { CapsBlockedError } from '../review/pipeline.js';
+import type { TrackingDb } from '../tracking/db.js';
+import type { CapsEvaluator } from '../tracking/caps.js';
+import type { PricingBook } from '../pricing/loader.js';
 import { unifiedDiff } from '../tools/write-file.js';
 import type { Severity } from '../review/types.js';
 import { SEVERITY_RANK } from '../review/types.js';
@@ -88,6 +93,23 @@ export interface GitHandlerDeps {
   maxTokens?: number;
   /** Max `gitCommitMessage` attempts before returning a structured failure (D1). */
   maxCommitAttempts?: number;
+  /**
+   * Step-event trail for the review pipeline (T-CR-206). When present together
+   * with {@link pricing}, `reviewSummary` runs through a
+   * {@link createTrackedReviewObserver} so each LLM review stage is recorded as
+   * a priced `activity:"review"` step event. Absent → review is untracked
+   * (recording no-ops without a pricing book, mirroring the chat/agent gate).
+   */
+  tracking?: TrackingDb;
+  /** Pricing book used to price review step events. See {@link tracking}. */
+  pricing?: PricingBook;
+  /**
+   * Optional cost-cap gate. When present, a review stage whose pre-flight
+   * projection exceeds a hard cap is blocked before the LLM call (council
+   * Q2=A — same budget contract as the chat/agent pre-send gate); the block
+   * surfaces as a coded `cost_cap_blocked` error.
+   */
+  caps?: CapsEvaluator;
 }
 
 const ALL_SEVERITIES = Object.keys(SEVERITY_RANK) as Severity[];
@@ -195,12 +217,43 @@ export class GitHandler {
     const backend = this.deps.resolveBackend(req.providerId);
     const model = this.deps.resolveModel(req.providerId);
 
-    const result = await runReview(backend, {
-      cwd,
-      source,
-      runner: this.runner,
-      pipeline: { config: { model, maxTokens: this.maxTokens } },
-    });
+    // Wire the tracked observer (T-CR-206) only when a pricing book + tracking
+    // trail are available — recording no-ops without pricing (the same gate the
+    // chat/agent step recorder uses). The review action has no conversation, so
+    // events group under a stable `review:<cwd>` id (council Q1=A). The optional
+    // caps gate blocks a cap-blowing diff before the stage (council Q2=A).
+    const observer =
+      this.deps.pricing && this.deps.tracking
+        ? createTrackedReviewObserver({
+            db: this.deps.tracking,
+            pricing: this.deps.pricing,
+            ...(this.deps.caps ? { caps: this.deps.caps } : {}),
+            conversationId: `review:${cwd}`,
+            cwd,
+            mode: 'api',
+          })
+        : undefined;
+
+    let result;
+    try {
+      result = await runReview(backend, {
+        cwd,
+        source,
+        runner: this.runner,
+        pipeline: {
+          config: { model, maxTokens: this.maxTokens },
+          ...(observer ? { observer } : {}),
+        },
+      });
+    } catch (error) {
+      // A hard-cap block is a controlled policy refusal, not a crash — surface
+      // it as a coded error mirroring the chat/agent `cost_cap_blocked` stop
+      // reason (council Q3=A), so the IDE can show a budget-exceeded notice.
+      if (error instanceof CapsBlockedError) {
+        throw new GitRequestError('cost_cap_blocked', error.message);
+      }
+      throw error;
+    }
     const changes = await getDiff(cwd, source, this.runner);
     const summary = summarizeReview(result, changes);
 
