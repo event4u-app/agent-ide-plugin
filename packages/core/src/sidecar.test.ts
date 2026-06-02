@@ -408,6 +408,36 @@ describe('buildCoreDispatcher — config-registry wiring (T-401, ADR-050)', () =
         total: 1,
       });
 
+      // configRead serves the body off the SAME walk (ADR-052, the read sibling).
+      const body = await dispatcher.dispatch(
+        {
+          messageId: 'm3',
+          messageType: 'configRead',
+          data: { kind: 'skill', name: 'laravel' },
+          done: true,
+        },
+        () => {},
+      );
+      expect(body.messageType).toBe('configRead');
+      expect(body.data).toMatchObject({
+        kind: 'skill',
+        name: 'laravel',
+        source: 'local',
+        body: '# Laravel\n',
+      });
+
+      // A kind/name miss is graceful: source 'missing', empty body (no throw).
+      const missing = await dispatcher.dispatch(
+        {
+          messageId: 'm4',
+          messageType: 'configRead',
+          data: { kind: 'rule', name: 'laravel' },
+          done: true,
+        },
+        () => {},
+      );
+      expect(missing.data).toMatchObject({ kind: 'rule', source: 'missing', body: '' });
+
       dispatcher.dispose();
     } finally {
       await rm(dir, { recursive: true, force: true });

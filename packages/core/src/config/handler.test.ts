@@ -130,6 +130,62 @@ describe('ConfigHandler.list', () => {
   });
 });
 
+describe('ConfigHandler.read', () => {
+  it('reads an artifact body by {kind, name} with source local', async () => {
+    const h = new ConfigHandler({
+      loadNodes: nodesOf(node('skill', 'laravel', { body: '# Laravel\nWrite PHP.' })),
+    });
+    const res = await h.read({ kind: 'skill', name: 'laravel' });
+    expect(res).toEqual({
+      kind: 'skill',
+      name: 'laravel',
+      source: 'local',
+      body: '# Laravel\nWrite PHP.',
+    });
+  });
+
+  it('disambiguates by kind — same slug, different kinds, returns the requested one', async () => {
+    const h = new ConfigHandler({
+      loadNodes: nodesOf(
+        node('command', 'review', { body: 'command body' }),
+        node('skill', 'review', { body: 'skill body' }),
+      ),
+    });
+    expect((await h.read({ kind: 'command', name: 'review' })).body).toBe('command body');
+    expect((await h.read({ kind: 'skill', name: 'review' })).body).toBe('skill body');
+  });
+
+  it('matches the DISPLAY name (frontmatter name) the listing returned, not the file slug', async () => {
+    const h = new ConfigHandler({
+      loadNodes: nodesOf(node('skill', 'laravel-slug', { fmName: 'laravel', body: 'B' })),
+    });
+    // list surfaces it as `laravel`; read must find it under that same name.
+    expect((await h.read({ kind: 'skill', name: 'laravel' })).body).toBe('B');
+    expect((await h.read({ kind: 'skill', name: 'laravel-slug' })).source).toBe('missing');
+  });
+
+  it('returns source missing + empty body for an unknown kind/name (does not throw)', async () => {
+    const h = new ConfigHandler({ loadNodes: nodesOf(node('skill', 'laravel')) });
+    const res = await h.read({ kind: 'rule', name: 'laravel' });
+    expect(res).toEqual({ kind: 'rule', name: 'laravel', source: 'missing', body: '' });
+  });
+
+  it('fails open to a missing result when the walk throws (does not throw)', async () => {
+    const h = new ConfigHandler({ loadNodes: () => Promise.reject(new Error('FS race')) });
+    const res = await h.read({ kind: 'skill', name: 'laravel' });
+    expect(res).toMatchObject({ source: 'missing', body: '' });
+  });
+
+  it('shares the walk-once cache with list (read after list does not re-walk)', async () => {
+    const loadNodes = vi.fn(nodesOf(node('skill', 'laravel', { body: 'B' })));
+    const h = new ConfigHandler({ loadNodes });
+    await h.list({});
+    const res = await h.read({ kind: 'skill', name: 'laravel' });
+    expect(res.body).toBe('B');
+    expect(loadNodes).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('ConfigHandler — walk-once cache', () => {
   it('walks the agent-config tree once across multiple calls', async () => {
     const loadNodes = vi.fn(nodesOf(node('skill', 'laravel'), node('rule', 'scope-control')));

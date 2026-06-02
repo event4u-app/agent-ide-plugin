@@ -9,6 +9,8 @@ import {
   CommandReadRequestSchema,
   type ConfigListResponse,
   ConfigListRequestSchema,
+  type ConfigReadResponse,
+  ConfigReadRequestSchema,
   type ConnectResponse,
   ConnectRequestSchema,
   type ConversationListResponse,
@@ -148,9 +150,12 @@ export class Dispatcher {
         this.requireCommands().list(CommandListRequestSchema.parse(data ?? {})),
       commandRead: (data: unknown): Promise<CommandReadResponse> =>
         this.requireCommands().read(CommandReadRequestSchema.parse(data ?? {})),
-      // Agent-config registry (T-401 / ADR-050): read-only skill/rule/command listing.
+      // Agent-config registry (T-401 / ADR-050): read-only skill/rule/command
+      // listing + body read (the configList contract's read sibling, ADR-052).
       configList: (data: unknown): Promise<ConfigListResponse> =>
         this.requireConfig().list(ConfigListRequestSchema.parse(data ?? {})),
+      configRead: (data: unknown): Promise<ConfigReadResponse> =>
+        this.requireConfig().read(ConfigReadRequestSchema.parse(data ?? {})),
       // Live terminal: input + resize are plain request/response (T-PRD03);
       // `terminalSubscribe` is streaming and handled in `dispatch` below.
       terminalInput: (data: unknown): TerminalInputResponse =>
