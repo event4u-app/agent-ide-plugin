@@ -14,6 +14,8 @@ import {
   CodeSuggestionAnnotationSchema,
   ContextScopeSchema,
   ContextSnippetAnnotationSchema,
+  ConversationRewindRequestSchema,
+  ConversationRewindResponseSchema,
   CostReportRequestSchema,
   CostReportResponseSchema,
   EchoRequestSchema,
@@ -337,6 +339,7 @@ describe('method registry', () => {
       'chatCancel',
       'chatSend',
       'connect',
+      'conversationRewind',
       'costReport',
       'echo',
       'gitCommitMessage',
@@ -385,6 +388,41 @@ describe('method registry', () => {
     ]);
     // The wire shape carries no field that could leak the key value.
     expect(Object.keys(res)).not.toContain('apiKey');
+  });
+
+  it('conversationRewind round-trips a found plan and a not-found result', () => {
+    const req = ConversationRewindRequestSchema.parse({
+      conversationId: 'c1',
+      checkpointId: 'cp1',
+    });
+    expect(req.checkpointId).toBe('cp1');
+
+    const found = ConversationRewindResponseSchema.parse({
+      conversationId: 'c1',
+      checkpointId: 'cp1',
+      found: true,
+      targetTurnIndex: 2,
+      changedFiles: ['src/a.ts'],
+      warnings: [],
+    });
+    expect(found.found).toBe(true);
+    expect(found.targetTurnIndex).toBe(2);
+    // No message-body or workState field on the wire (council Q1/Q2=A).
+    expect(Object.keys(found)).not.toContain('messagesToKeep');
+    expect(Object.keys(found)).not.toContain('workState');
+
+    const missing = ConversationRewindResponseSchema.parse({
+      conversationId: 'c1',
+      checkpointId: 'gone',
+      found: false,
+    });
+    expect(missing.found).toBe(false);
+    expect(missing.targetTurnIndex).toBeUndefined();
+
+    // Empty conversationId/checkpointId are rejected at the request boundary.
+    expect(() =>
+      ConversationRewindRequestSchema.parse({ conversationId: '', checkpointId: 'x' }),
+    ).toThrow();
   });
 
   it('costReport request/response round-trip the aggregate shape', () => {

@@ -614,6 +614,53 @@ export const ChatCancelResponseSchema = z.object({
 });
 export type ChatCancelResponse = z.infer<typeof ChatCancelResponseSchema>;
 
+// --- conversation rewind (T-1303) ----------------------------------------
+
+export const ConversationRewindRequestSchema = z.object({
+  conversationId: z.string().min(1),
+  /** The checkpoint to rewind to. */
+  checkpointId: z.string().min(1),
+});
+export type ConversationRewindRequest = z.infer<typeof ConversationRewindRequestSchema>;
+
+/**
+ * The wire projection of core's pure `planRewind` plan (T-1303). Core NEVER
+ * mutates the world — it returns what a rewind WOULD do and the IDE executes it
+ * (restores the conversation view, and via its own VCS/undo authority the
+ * files). Mirrors the established "core returns a plan, the IDE applies it"
+ * shape (`onboardingDetect`, `gitReviewApplyFix`).
+ *
+ * AI council (codex-cli 0.134.0 + gemini-cli 0.41.2, 2026-06-02) on the wire
+ * shape: omit the opaque `workState` snapshot (codegen-hostile `unknown`, and the
+ * IDE does not need core's loop internals to restore the view — UNANIMOUS Q1=A);
+ * carry only `targetTurnIndex`, NOT the full message bodies — the IDE already
+ * holds the conversation and slices `[0, targetTurnIndex)` itself, avoiding a new
+ * message DTO on the wire (UNANIMOUS Q2=A); surface `warnings` so the IDE can
+ * tell the user a rewind will be partial (UNANIMOUS Q4). A missing `checkpointId`
+ * on an EXISTING conversation is expected state (checkpoints are not yet
+ * auto-recorded — the AgentDriver write side is IDE-gated), so it returns
+ * `found:false` rather than an error (Q3 split → codex B for the checkpoint
+ * case); a missing `conversationId` is a true fault and surfaces
+ * `conversation_not_found` (Q3 split → gemini A for the conversation case).
+ */
+export const ConversationRewindResponseSchema = z.object({
+  /** Echoed from the request so the IDE can guard against a stale round-trip. */
+  conversationId: z.string(),
+  checkpointId: z.string(),
+  /** `false` when the checkpoint id is not on the (existing) conversation. */
+  found: z.boolean(),
+  /**
+   * Keep messages in the half-open range `[0, targetTurnIndex)`; drop the rest.
+   * Present only when `found`.
+   */
+  targetTurnIndex: z.number().int().nonnegative().optional(),
+  /** Files the IDE should consider restoring to their checkpoint state. Present only when `found`. */
+  changedFiles: z.array(z.string()).optional(),
+  /** Soft problems (e.g. no file manifest, clamped index) — never thrown. Present only when `found`. */
+  warnings: z.array(z.string()).optional(),
+});
+export type ConversationRewindResponse = z.infer<typeof ConversationRewindResponseSchema>;
+
 // --- tool-call lifecycle + approval (product-readiness Phase 1) ----------
 
 /**
@@ -1064,6 +1111,10 @@ export const Methods = {
   terminalResize: { request: TerminalResizeRequestSchema, response: TerminalResizeResponseSchema },
   chatSend: { request: ChatSendRequestSchema, response: ChatSendResponseSchema },
   chatCancel: { request: ChatCancelRequestSchema, response: ChatCancelResponseSchema },
+  conversationRewind: {
+    request: ConversationRewindRequestSchema,
+    response: ConversationRewindResponseSchema,
+  },
   agentTurn: { request: AgentTurnRequestSchema, response: AgentTurnResponseSchema },
   gitCommitMessage: {
     request: GitCommitMessageRequestSchema,

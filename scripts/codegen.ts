@@ -297,6 +297,28 @@ const classes: DataClass[] = [
     fields: [{ name: 'cancelled', kotlinType: 'Boolean' }],
   },
 
+  // --- conversation rewind (T-1303) ------------------------------------
+  {
+    name: 'ConversationRewindRequest',
+    doc: 'Plan a rewind of a conversation to one of its checkpoints (non-mutating; the IDE applies the returned plan).',
+    fields: [
+      { name: 'conversationId', kotlinType: 'String' },
+      { name: 'checkpointId', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'ConversationRewindResponse',
+    doc: 'The rewind plan; found=false when the checkpoint id is not on the conversation.',
+    fields: [
+      { name: 'conversationId', kotlinType: 'String' },
+      { name: 'checkpointId', kotlinType: 'String' },
+      { name: 'found', kotlinType: 'Boolean' },
+      { name: 'targetTurnIndex', kotlinType: 'Int?', default: 'null' },
+      { name: 'changedFiles', kotlinType: 'List<String>?', default: 'null' },
+      { name: 'warnings', kotlinType: 'List<String>?', default: 'null' },
+    ],
+  },
+
   // --- agent turn: chat that edits files (product-readiness) -----------
   {
     name: 'AgentTurnRequest',
