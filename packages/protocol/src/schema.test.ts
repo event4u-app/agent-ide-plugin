@@ -15,6 +15,8 @@ import {
   CommandListResponseSchema,
   CommandReadRequestSchema,
   CommandReadResponseSchema,
+  ConfigReadRequestSchema,
+  ConfigReadResponseSchema,
   ConnectRequestSchema,
   CodeSuggestionAnnotationSchema,
   ContextScopeSchema,
@@ -350,6 +352,7 @@ describe('method registry', () => {
       'commandList',
       'commandRead',
       'configList',
+      'configRead',
       'connect',
       'conversationList',
       'conversationRewind',
@@ -548,6 +551,33 @@ describe('method registry', () => {
     expect(missing.body).toBe('');
     expect(() =>
       CommandReadResponseSchema.parse({ name: 'x', source: 'disk', body: '' }),
+    ).toThrow();
+  });
+
+  it('configRead keys on {kind,name}, round-trips a local body, and rejects mcp/unknown source', () => {
+    const req = ConfigReadRequestSchema.parse({ kind: 'skill', name: 'laravel' });
+    expect(req.kind).toBe('skill');
+    expect(req.name).toBe('laravel');
+    // kind is required — name alone is not unique across kinds.
+    expect(() => ConfigReadRequestSchema.parse({ name: 'laravel' })).toThrow();
+
+    const local = ConfigReadResponseSchema.parse({
+      kind: 'skill',
+      name: 'laravel',
+      source: 'local',
+      body: '# Laravel',
+    });
+    expect(local.source).toBe('local');
+    const missing = ConfigReadResponseSchema.parse({
+      kind: 'rule',
+      name: 'nope',
+      source: 'missing',
+      body: '',
+    });
+    expect(missing.body).toBe('');
+    // Local-only: no `mcp` member (unlike CommandSource), and unknown rejects.
+    expect(() =>
+      ConfigReadResponseSchema.parse({ kind: 'skill', name: 'x', source: 'mcp', body: '' }),
     ).toThrow();
   });
 

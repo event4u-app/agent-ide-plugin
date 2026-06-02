@@ -393,6 +393,22 @@ data class ConfigListResponse(
     val total: Int,
 )
 
+/** Load one artifact's body by (kind, name); kind is required as names are not unique. */
+@Serializable
+data class ConfigReadRequest(
+    val kind: String,
+    val name: String,
+)
+
+/** An artifact body read from the local walk index; source is local/missing (no mcp). */
+@Serializable
+data class ConfigReadResponse(
+    val kind: String,
+    val name: String,
+    val source: String,
+    val body: String,
+)
+
 /** Start an agentic chat turn (LLM + tool loop). maxIterations caps the loop; omitted = Core default. */
 @Serializable
 data class AgentTurnRequest(

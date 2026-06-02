@@ -454,6 +454,24 @@ const classes: DataClass[] = [
       { name: 'total', kotlinType: 'Int' },
     ],
   },
+  {
+    name: 'ConfigReadRequest',
+    doc: "Load one artifact's body by (kind, name); kind is required as names are not unique.",
+    fields: [
+      { name: 'kind', kotlinType: 'String' },
+      { name: 'name', kotlinType: 'String' },
+    ],
+  },
+  {
+    name: 'ConfigReadResponse',
+    doc: 'An artifact body read from the local walk index; source is local/missing (no mcp).',
+    fields: [
+      { name: 'kind', kotlinType: 'String' },
+      { name: 'name', kotlinType: 'String' },
+      { name: 'source', kotlinType: 'String' },
+      { name: 'body', kotlinType: 'String' },
+    ],
+  },
 
   // --- agent turn: chat that edits files (product-readiness) -----------
   {

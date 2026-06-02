@@ -905,6 +905,43 @@ export const ConfigListResponseSchema = z.object({
 });
 export type ConfigListResponse = z.infer<typeof ConfigListResponseSchema>;
 
+/**
+ * Where a config artifact body was resolved from. Unlike {@link CommandSource}
+ * there is no `mcp` member: `ConfigHandler` is local-only — the body is already
+ * parsed onto every walked node for all three kinds, and the agent-config MCP
+ * server exposes `skill_read` / `command_read` but no `rule_read`, so an
+ * MCP-first path would be asymmetric (AI council 2026-06-02 Q2=A). `missing`
+ * ⇒ no artifact of that `kind` with that `name`.
+ */
+export const ConfigSourceSchema = z.enum(['local', 'missing']);
+export type ConfigSource = z.infer<typeof ConfigSourceSchema>;
+
+export const ConfigReadRequestSchema = z.object({
+  /** The artifact kind — required, because a name is NOT unique across kinds. */
+  kind: ConfigKindSchema,
+  /** Artifact name (slug), as returned by `configList`. */
+  name: z.string(),
+});
+export type ConfigReadRequest = z.infer<typeof ConfigReadRequestSchema>;
+
+/**
+ * The body sibling of {@link ConfigListResponse} — the read half of the
+ * agent-config registry contract (the command-only equivalent is
+ * `commandRead`). Core reads the body straight off its cached walk index
+ * (the same walk `configList` groups), so list and read can never disagree.
+ * Local-only by design (see {@link ConfigSourceSchema}); `missing` ⇒ empty
+ * body. Full body, uncapped — consistent with `commandRead` (AI council
+ * 2026-06-02 Q4).
+ */
+export const ConfigReadResponseSchema = z.object({
+  kind: ConfigKindSchema,
+  name: z.string(),
+  source: ConfigSourceSchema,
+  /** Artifact body; empty string when `source` is `missing`. */
+  body: z.string(),
+});
+export type ConfigReadResponse = z.infer<typeof ConfigReadResponseSchema>;
+
 // --- tool-call lifecycle + approval (product-readiness Phase 1) ----------
 
 /**
@@ -1395,6 +1432,7 @@ export const Methods = {
   commandList: { request: CommandListRequestSchema, response: CommandListResponseSchema },
   commandRead: { request: CommandReadRequestSchema, response: CommandReadResponseSchema },
   configList: { request: ConfigListRequestSchema, response: ConfigListResponseSchema },
+  configRead: { request: ConfigReadRequestSchema, response: ConfigReadResponseSchema },
 } as const;
 
 export type MethodName = keyof typeof Methods;
