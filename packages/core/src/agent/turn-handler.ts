@@ -37,10 +37,12 @@ import {
   type ApprovalDecisionRequest,
   type ToolExecResult,
 } from './approval.js';
+import { hashEdits } from './edit-loop.js';
 import { resolveMode, type DirectiveSet } from './modes.js';
 import type { PreparedTool, ToolExecution, ToolRegistry } from './tool-registry.js';
 import { transitionCodeSuggestion } from './suggestions.js';
 import { toToolResultPart, type NormalizedToolCall } from '../tools/normalizer.js';
+import { WriteFilesArgsSchema } from '../tools/write-files.js';
 
 /**
  * `agentTurn` — the agentic chat turn (AI council 2026-06-01, UNANIMOUS forks
@@ -73,6 +75,40 @@ import { toToolResultPart, type NormalizedToolCall } from '../tools/normalizer.j
 
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_MAX_TOKENS = 2048;
+
+/**
+ * The model has to propose the SAME `write_files` batch this many times before
+ * the anti-loop guard stops the turn: the first occurrence runs, the 2nd (first
+ * repeat) gets one no-progress nudge, the 3rd (second repeat) stops it.
+ */
+const STUCK_REPEAT_LIMIT = 3;
+
+/** Fed back as the `tool_result` for the FIRST repeated `write_files` batch. */
+const REPEATED_EDIT_FEEDBACK =
+  'You already proposed this exact write_files edit batch earlier in this turn and ' +
+  'it did not make progress. Re-read the current file contents and try a different ' +
+  'edit, or stop if the task is complete — do not re-send the identical edit.';
+
+/** Fed back when a batch is repeated a SECOND time and the turn is stopped. */
+const STUCK_EDIT_FEEDBACK =
+  'This write_files edit batch was proposed repeatedly without progress. Stopping ' +
+  'the turn to avoid burning the iteration budget. Re-examine the file and start a ' +
+  'fresh approach in a new turn.';
+
+/**
+ * Stable hash of a `write_files` tool call's edit batch, or `null` for any other
+ * tool or an unparseable input. Reuses {@link hashEdits} — the EditLoop
+ * `visitedSet` primitive — so the anti-loop guard recognises a re-proposed batch
+ * by the SAME signature the per-file edit loop would. The hash includes each
+ * edit's `file` path (so identical boilerplate to two different files is NOT a
+ * false repeat) plus its `originalCode`/`newCode`/flags.
+ */
+function writeFilesBatchHash(call: NormalizedToolCall): string | null {
+  if (call.name !== 'write_files') return null;
+  const parsed = WriteFilesArgsSchema.safeParse(call.input);
+  if (!parsed.success) return null;
+  return hashEdits(parsed.data.edits);
+}
 
 /** Thrown when a second turn arrives while one is already in flight. */
 export class AgentBusyError extends Error {
@@ -288,6 +324,12 @@ export class AgentTurnHandler {
       // suggestion ids so multiple `write_files` calls never collide.
       const codeSuggestions: CodeSuggestionAnnotation[] = [];
       let toolCallSeq = 0;
+      // Anti-loop guard (T-702c, AI council 2026-06-02): how many times the model
+      // has proposed each `write_files` edit batch THIS turn, keyed by
+      // `hashEdits` (the EditLoop `visitedSet` primitive). A re-proposed identical
+      // batch is not progress — it would otherwise burn iterations to
+      // `maxIterations`. Turn-local: never leaks across turns (council Q5).
+      const editBatchSeen = new Map<string, number>();
       let finalText = '';
       let iterations = 0;
       let stopReason = 'end_turn';
@@ -335,9 +377,31 @@ export class AgentTurnHandler {
 
         // Execute every requested tool-call sequentially (council trap: ordered,
         // especially for write_files), feeding each result back to the model.
+        // Anti-loop guard (T-702c, AI council 2026-06-02, UNANIMOUS Q1=b/Q2/Q4/Q5):
+        // a `write_files` batch the model has already proposed verbatim this turn
+        // is not progress. The 1st repeat short-circuits to a no-progress
+        // `tool_result` (skip the redundant apply, nudge the model to change
+        // course or stop); a 2nd identical repeat stops the turn (reusing the
+        // `max_iterations` stop reason — no new wire surface). Scope: `write_files`
+        // only; never fires on a batch's first occurrence.
         const toolResults: ContentPart[] = [];
+        let stuck = false;
         for (const call of iter.toolCalls) {
           if (token.isCancelled) break;
+          const batchHash = writeFilesBatchHash(call);
+          if (batchHash !== null) {
+            const seen = (editBatchSeen.get(batchHash) ?? 0) + 1;
+            editBatchSeen.set(batchHash, seen);
+            if (seen >= STUCK_REPEAT_LIMIT) {
+              stuck = true;
+              toolResults.push(toToolResultPart(call, STUCK_EDIT_FEEDBACK, true));
+              continue;
+            }
+            if (seen === 2) {
+              toolResults.push(toToolResultPart(call, REPEATED_EDIT_FEEDBACK, true));
+              continue;
+            }
+          }
           toolResults.push(
             await this.runOneTool(
               call,
@@ -357,6 +421,11 @@ export class AgentTurnHandler {
           break;
         }
         messages.push({ role: 'user', content: toolResults });
+        if (stuck) {
+          stopReason = 'max_iterations';
+          completed = true;
+          break;
+        }
       }
 
       if (!completed) stopReason = 'max_iterations';

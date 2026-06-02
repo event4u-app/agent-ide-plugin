@@ -718,3 +718,115 @@ describe('AgentTurnHandler — agent-mode gating (T-PRD08)', () => {
     expect(def.mode).toBe('edit');
   });
 });
+
+describe('AgentTurnHandler — anti-loop guard (T-702c)', () => {
+  /** A scripted write_files tool turn (input merged from the json_delta). */
+  function writeTurn(id: string, input: unknown): LlmStreamEvent[] {
+    return [
+      { kind: 'tool_use_start', id, name: 'write_files' },
+      { kind: 'tool_use_input_delta', id, json_delta: JSON.stringify(input) },
+      { kind: 'tool_use_end', id, name: 'write_files', input: undefined },
+      { kind: 'stop', reason: 'tool_use', usage: USAGE },
+    ];
+  }
+  const doneTurn: LlmStreamEvent[] = [
+    { kind: 'text_delta', text: 'Recovered.' },
+    { kind: 'stop', reason: 'end_turn', usage: USAGE },
+  ];
+
+  it('stops the turn when the model re-proposes the identical write_files batch twice', async () => {
+    const root = await tempWorkspace();
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root });
+    const sameBatch = { edits: [{ file: 'loop.txt', originalCode: '', newCode: 'created\n' }] };
+    // The backend repeats the SAME batch every iteration (scriptedBackend repeats
+    // its last turn). maxIterations is high so reaching a stop at iteration 3
+    // proves the GUARD stopped it, not the natural iteration cap.
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry,
+        maxIterations: 10,
+        resolveBackend: () => scriptedBackend([writeTurn('tc', sameBatch)]),
+      }),
+    );
+    const { emit, envelopes } = collect();
+
+    const terminal = await handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'loop' },
+      emit,
+    );
+    const res = terminal.data as AgentTurnResponse;
+
+    // 1st occurrence runs; 2nd (first repeat) is nudged; 3rd stops the turn.
+    expect(res.iterations).toBe(3);
+    expect(res.stopReason).toBe('max_iterations');
+    // The batch applied exactly ONCE — the repeats short-circuited before any
+    // redundant apply (one `started` lifecycle event, from iteration 1 only).
+    expect(toolEvents(envelopes).filter((t) => t.kind === 'started')).toHaveLength(1);
+    expect(res.changedFiles).toEqual(['loop.txt']);
+  });
+
+  it('does not flag identical content sent to DIFFERENT files (path is in the hash)', async () => {
+    const root = await tempWorkspace();
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root });
+    // Same newCode, different file path → different batch hash → no false repeat.
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry,
+        resolveBackend: () =>
+          scriptedBackend([
+            writeTurn('a', { edits: [{ file: 'x.txt', originalCode: '', newCode: 'same\n' }] }),
+            writeTurn('b', { edits: [{ file: 'y.txt', originalCode: '', newCode: 'same\n' }] }),
+            doneTurn,
+          ]),
+      }),
+    );
+    const { emit, envelopes } = collect();
+
+    const terminal = await handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'two files' },
+      emit,
+    );
+    const res = terminal.data as AgentTurnResponse;
+
+    expect(res.stopReason).toBe('end_turn');
+    expect(res.iterations).toBe(3);
+    expect(res.changedFiles.sort()).toEqual(['x.txt', 'y.txt']);
+    // Both writes executed — neither short-circuited.
+    expect(toolEvents(envelopes).filter((t) => t.kind === 'started')).toHaveLength(2);
+    expect(await readFile(join(root, 'x.txt'), 'utf8')).toBe('same\n');
+    expect(await readFile(join(root, 'y.txt'), 'utf8')).toBe('same\n');
+  });
+
+  it('nudges once on the first repeat and lets the model recover (no premature stop)', async () => {
+    const root = await tempWorkspace();
+    const registry = buildDefaultToolRegistry({ workspaceRoot: root });
+    const batch = { edits: [{ file: 'note.txt', originalCode: '', newCode: 'hi\n' }] };
+    // Iteration 1 applies; iteration 2 re-proposes the identical batch (first
+    // repeat → one nudge, no apply); iteration 3 the model changes course and
+    // ends the turn cleanly.
+    const handler = new AgentTurnHandler(
+      baseDeps({
+        registry,
+        resolveBackend: () =>
+          scriptedBackend([writeTurn('tc1', batch), writeTurn('tc2', batch), doneTurn]),
+      }),
+    );
+    const { emit, envelopes } = collect();
+
+    const terminal = await handler.handleTurn(
+      'm1',
+      { conversationId: 'c1', message: 'edit then loop then recover' },
+      emit,
+    );
+    const res = terminal.data as AgentTurnResponse;
+
+    expect(res.stopReason).toBe('end_turn');
+    expect(res.iterations).toBe(3);
+    expect(res.text).toBe('Recovered.');
+    // Only the first occurrence applied; the repeat was nudged, not re-run.
+    expect(toolEvents(envelopes).filter((t) => t.kind === 'started')).toHaveLength(1);
+    expect(res.changedFiles).toEqual(['note.txt']);
+  });
+});
