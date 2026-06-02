@@ -371,6 +371,21 @@ const classes: DataClass[] = [
     fields: [{ name: 'results', kotlinType: 'List<ConversationSearchResult>' }],
   },
 
+  // --- conversation list (T-1301) --------------------------------------
+  {
+    name: 'ConversationListRequest',
+    doc: 'List conversations newest-first; limit is optional and clamped by Core.',
+    fields: [{ name: 'limit', kotlinType: 'Int?', default: 'null' }],
+  },
+  {
+    name: 'ConversationListResponse',
+    doc: 'Newest-first conversation summaries; total is the full count before the cap.',
+    fields: [
+      { name: 'conversations', kotlinType: 'List<ConversationSummary>' },
+      { name: 'total', kotlinType: 'Int' },
+    ],
+  },
+
   // --- agent turn: chat that edits files (product-readiness) -----------
   {
     name: 'AgentTurnRequest',

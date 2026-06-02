@@ -750,6 +750,36 @@ export const ConversationSearchResponseSchema = z.object({
 });
 export type ConversationSearchResponse = z.infer<typeof ConversationSearchResponseSchema>;
 
+// --- conversation list (T-1301) -------------------------------------------
+
+export const ConversationListRequestSchema = z.object({
+  /**
+   * Cap the number of summaries (most-recent-`updatedAt` first). Core clamps to
+   * a hard ceiling so a workspace with thousands of conversations cannot
+   * produce an oversized NDJSON line (AI council codex-cli 0.134.0 + gemini-cli
+   * 0.41.2, 2026-06-02, split Q1 resolved B for sibling-consistency with
+   * `conversationSearch`'s `MAX_CONVERSATION_SEARCH_RESULTS` ceiling).
+   */
+  limit: z.number().int().positive().optional(),
+});
+export type ConversationListRequest = z.infer<typeof ConversationListRequestSchema>;
+
+/**
+ * The wire projection of Core's `ConversationStore.list` — the IDE's
+ * left-sidebar default view of every conversation on record (T-1301),
+ * complementary to `conversationSearch` (which needs a query and returns `[]`
+ * for an empty one). Read-only: Core lists the persisted conversations
+ * newest-first and returns lightweight summaries (no message bodies); the IDE
+ * renders them. `total` is the full count before the cap so the sidebar can
+ * show "showing N of M" — `list` means "show everything", so a silent
+ * truncation would hide history (council split Q3 resolved to carry `total`).
+ */
+export const ConversationListResponseSchema = z.object({
+  conversations: z.array(ConversationSummarySchema),
+  total: z.number().int().nonnegative(),
+});
+export type ConversationListResponse = z.infer<typeof ConversationListResponseSchema>;
+
 // --- tool-call lifecycle + approval (product-readiness Phase 1) ----------
 
 /**
@@ -1214,6 +1244,10 @@ export const Methods = {
   conversationSearch: {
     request: ConversationSearchRequestSchema,
     response: ConversationSearchResponseSchema,
+  },
+  conversationList: {
+    request: ConversationListRequestSchema,
+    response: ConversationListResponseSchema,
   },
   agentTurn: { request: AgentTurnRequestSchema, response: AgentTurnResponseSchema },
   gitCommitMessage: {
