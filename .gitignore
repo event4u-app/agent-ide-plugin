@@ -35,3 +35,88 @@ build/
 /agents/analysis/sweepai/
 /agents/analysis/intellij-augment/
 /agents/tmp/
+
+# event4u/agent-config
+# Agent config — tool-scope leftovers (ADR-020 § global-only consumer
+# install). After the Phase-5 migration the entire `.augment/`, `.claude/`,
+# `.cursor/` trees live under `~/.event4u/agent-config/`; consumers carry
+# only `agents/overrides/` + `agents/.event4u-bridge.yml`. The per-tool
+# bridge pointer files for Windsurf / Cline / Gemini-CLI live under
+# `.windsurf/`, `.clinerules/`, `.gemini/` and ARE committed — those
+# directories stay tracked (not listed here). Pre-Phase-5 entries kept
+# as a defence-in-depth ignore list for legacy installs that have not
+# migrated yet — Phase 5 unstages them on first migrate run.
+.augment/skills/
+.augment/commands/
+.augment/guidelines/
+.augment/templates/
+.augment/contexts/
+.augment/scripts/
+.augment/rules/
+.augment/README.md
+.claude/skills/
+.claude/commands/
+.claude/agents/
+.claude/CLAUDE.md
+.cursor/rules/
+
+# Agent config — Phase 5 migration snapshot (ADR-020). Written by
+# `agent-config migrate-to-global` as a copy-then-move safety net so a
+# migration can be rolled back. Local-only — never commit.
+.legacy-pre-global-only/
+
+# Agent config — CLI wrapper (auto-generated on every install)
+/agent-config
+
+# Agent config — personal settings (written by the installer)
+.agent-settings.yml
+.agent-settings
+.agent-settings.backup.key-value
+
+# Agent config — user-persona file (.agent-user.md, written by /agents user init)
+# Contains who the user is and how they want to be addressed. Local-only by
+# default; commit explicitly only via the deferred --shared opt-in.
+# See docs/contracts/agent-user-schema.md.
+.agent-user.md
+.agent-user.md.bak
+
+# Agent config — user-persona observation buffer (append-only JSONL,
+# never shared). Feeds /agents user review / accept only.
+.agent-user.observations.jsonl
+
+# Agent config — ghostwriter profiles (real-person public-figure voices,
+# written by /ghostwriter:fetch). Local-only by default; commit explicitly
+# only via the deferred --shared opt-in. README.md stays tracked.
+# See docs/contracts/ghostwriter-schema.md.
+/agents/ghostwriter/*.md
+!/agents/ghostwriter/README.md
+/agents/ghostwriter/*.md.bak
+
+# Agent config — legacy chat-history flat path. Current installs put
+# the file at agents/runtime/.agent-chat-history (covered by the
+# /agents/runtime/ catch-all below). Kept for back-compat with older
+# installs that have not migrated yet.
+/agents/.agent-chat-history
+/agents/.agent-chat-history.bak
+/agents/.agent-chat-history.*.bak
+
+# Agent config — artefact engagement telemetry (default-off, maintainer-only, never commit)
+.agent-engagement.jsonl
+.agent-engagement.jsonl.bak
+
+# Agent config — volatile runtime artefacts (machine-generated,
+# regenerated on demand, never committed). Single catch-all per the
+# Volatile Runtime policy: everything under agents/runtime/ is
+# local-only — price cache, council questions/responses/sessions,
+# council events log, Tier 1 hook runtime state, chat-history, budget
+# history, density / frugality / logs / mcp-telemetry / tmp scratch.
+# Durable evidence cited from docs / ADRs lives in agents/evidence/;
+# decision records in agents/decisions/.
+/agents/runtime/
+
+# Agent config — unified-setup wizard partial state (Roadmap R2 Phase 1).
+# Written by POST /api/v1/wizard/state between step transitions, deleted
+# on POST /api/v1/wizard/finish. Local-only crash-recovery aid.
+/.agent-config/wizard-state.json
+# event4u/agent-config — END
+/agents/state/*

@@ -1,0 +1,8 @@
+# event4u/agent-config — consumer bridge marker (auto-written).
+# Spec: docs/contracts/consumer-bridge.md (event4u-bridge/v1).
+# Reader contract: expand ~ against the current $HOME; fail closed
+# when global_root is missing on disk; never write back through it.
+schema: event4u-bridge/v1
+global_root: ~/.event4u/agent-config
+installed_at: 2026-06-02T02:02:03Z
+installer_version: 5.7.0
