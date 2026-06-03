@@ -5,7 +5,6 @@ import de.event4u.agent.SidecarClient
 import de.event4u.agent.SidecarLocator
 import de.event4u.agent.protocol.ChatSendResponse
 import de.event4u.agent.protocol.Envelope
-import de.event4u.agent.ui.ModelPill
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -20,9 +19,10 @@ import java.util.UUID
  *
  * One stable `conversationId` per controller (council: matches the persistence
  * store + lets `chatCancel` target the live turn). The streaming read runs on a
- * daemon thread (never the EDT — [ChatPanel.renderModel] self-marshals to the
- * EDT), and Stop sends `chatCancel` on its own thread so the blocked reader
- * never deadlocks the UI. Mode maps to a provider: API → the sidecar default,
+ * daemon thread (never the EDT — [JcefChatPanel] pushes snapshots through
+ * `executeJavaScript`, which is thread-safe), and Stop sends `chatCancel` on
+ * its own thread so the blocked reader never deadlocks the UI. Mode maps to a
+ * provider: API → the sidecar default,
  * CLI → the keyless `claude-cli` backend (chats with zero key config).
  */
 @Suppress("TooManyFunctions") // Implements the full ChatController interface (7 methods) + connect/dispose lifecycle.
@@ -163,11 +163,11 @@ class SidecarChatController(
         onModelChange(snapshot())
     }
 
-    override fun availableModels(): List<ModelPill.ModelOption> =
+    override fun availableModels(): List<ModelOption> =
         listOf(
-            ModelPill.ModelOption("claude-opus-4-6", "$15 / $75 per Mtok"),
-            ModelPill.ModelOption("claude-sonnet-4-6", "$3 / $15 per Mtok"),
-            ModelPill.ModelOption("claude-haiku-4-5", "$0.80 / $4 per Mtok"),
+            ModelOption("claude-opus-4-6", "$15 / $75 per Mtok"),
+            ModelOption("claude-sonnet-4-6", "$3 / $15 per Mtok"),
+            ModelOption("claude-haiku-4-5", "$0.80 / $4 per Mtok"),
         )
 
     fun dispose() {

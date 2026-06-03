@@ -18,6 +18,10 @@ coverage/
 clients/vscode/sidecar/
 clients/vscode/LICENSE
 
+# Shared JCEF chat document (build output of clients/vscode/scripts/
+# build-jcef-html.mjs — the JetBrains plugin loads it from resources)
+clients/jetbrains/src/main/resources/webview/
+
 # Kotlin / Gradle (clients/jetbrains)
 .gradle/
 .kotlin/

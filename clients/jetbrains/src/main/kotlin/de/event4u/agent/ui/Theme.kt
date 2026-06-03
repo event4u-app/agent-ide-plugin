@@ -28,7 +28,7 @@ object Theme {
         const val XL = 24
     }
 
-    // Border-radius scale — px units consumed by RoundedPanel + Chip painters.
+    // Border-radius scale — px units; mirrored by the webview's theme.ts RADIUS.
     object Radius {
         const val CHIP = 12
         const val CARD = 8

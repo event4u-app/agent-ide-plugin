@@ -5,7 +5,7 @@ import { composerHtml } from './components/composer-html.js';
 import { headerHtml } from './components/header-html.js';
 import { welcomeHtml } from './components/welcome-html.js';
 
-const DEFAULT_MODELS = [
+export const DEFAULT_MODELS = [
   { id: 'claude-opus-4-6', priceLabel: '$15 / $75 per Mtok' },
   { id: 'claude-sonnet-4-6', priceLabel: '$3 / $15 per Mtok' },
   { id: 'claude-haiku-4-5', priceLabel: '$0.80 / $4 per Mtok' },

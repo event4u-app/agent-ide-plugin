@@ -32,6 +32,14 @@ pnpm run package
 This builds the extension, bundles the sidecar into `sidecar/server.js`, and
 produces `event4u-agent.vsix`.
 
+## Shared chat webview
+
+`src/webview/` is the chat UI for BOTH IDE clients (ADR-055): the VS Code
+extension renders it as a webview, and `pnpm run build` additionally emits a
+self-contained `chat.html` (via `scripts/build-jcef-html.mjs`) that the
+JetBrains plugin loads into JCEF. The host integration is abstracted in
+`src/webview/host-bridge.ts` — keep this folder free of `vscode` API imports.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).

@@ -1,22 +1,18 @@
 /**
  * Webview chat application. Wires the static HTML built by `chat-html.ts` to
- * the host extension via `acquireVsCodeApi().postMessage`. Listens for
- * snapshot pushes from the host, re-renders the message region, mirrors
- * streaming + sidecar-health into the mode-pill status dot, and forwards
- * user actions back as Outbound messages.
+ * the host via a {@link HostBridge} (VS Code `postMessage` or JetBrains JCEF
+ * hooks — see `host-bridge.ts`). Listens for snapshot pushes from the host,
+ * re-renders the message region, mirrors streaming + sidecar-health into the
+ * mode-pill status dot, and forwards user actions back as Outbound messages.
  *
- * Bundle target: `clients/vscode/out/webview.js`.
+ * Bundle target: `clients/vscode/out/webview.js` (same bundle ships inside
+ * the JetBrains plugin resources — road-to-jcef-chat-parity Phase 1).
  */
 
 import type { ChatModelSnapshot } from './chat-model.js';
+import { detectHostBridge, type HostBridge, type HostGlobals } from './host-bridge.js';
 import { renderMessages } from './render.js';
 import { welcomeHtml } from './components/welcome-html.js';
-
-interface VsCodeApi {
-  postMessage(message: unknown): void;
-}
-
-declare const acquireVsCodeApi: () => VsCodeApi;
 
 interface HostSnapshot {
   kind: 'snapshot';
@@ -43,10 +39,10 @@ type Outbound =
   | { kind: 'attach-files'; paths: string[] }
   | { kind: 'halt-answer'; haltId: string; optionId?: string; text?: string };
 
-export function bootstrap(globals: { document: Document; window: Window; vscode: VsCodeApi }): {
+export function bootstrap(globals: { document: Document; window: Window; bridge: HostBridge }): {
   dispose: () => void;
 } {
-  const { document: doc, window: win, vscode } = globals;
+  const { document: doc, bridge } = globals;
   const messagesContainer = doc.getElementById('e4u-messages');
   const composer = doc.getElementById('e4u-composer') as HTMLFormElement | null;
   const input = doc.getElementById('e4u-input') as HTMLTextAreaElement | null;
@@ -58,7 +54,7 @@ export function bootstrap(globals: { document: Document; window: Window; vscode:
   const chipRail = doc.getElementById('e4u-chips');
 
   function post(message: Outbound): void {
-    vscode.postMessage(message);
+    bridge.post(message);
   }
 
   function applySnapshot(snapshot: ChatModelSnapshot): void {
@@ -211,8 +207,8 @@ export function bootstrap(globals: { document: Document; window: Window; vscode:
     chipRail.appendChild(chip);
   }
 
-  function onMessage(event: MessageEvent<HostInbound>): void {
-    const data = event.data;
+  function onHostMessage(message: unknown): void {
+    const data = message as HostInbound | null | undefined;
     if (!data) return;
     if (data.kind === 'snapshot') applySnapshot(data.snapshot);
     else if (data.kind === 'attachment-added') addAttachmentChip(data.label);
@@ -226,7 +222,7 @@ export function bootstrap(globals: { document: Document; window: Window; vscode:
   composer?.addEventListener('dragover', onDragOver);
   composer?.addEventListener('dragleave', onDragLeave);
   composer?.addEventListener('drop', onDrop);
-  win.addEventListener('message', onMessage as EventListener);
+  const unsubscribe = bridge.onMessage(onHostMessage);
 
   post({ kind: 'ready' });
 
@@ -240,18 +236,17 @@ export function bootstrap(globals: { document: Document; window: Window; vscode:
       composer?.removeEventListener('dragover', onDragOver);
       composer?.removeEventListener('dragleave', onDragLeave);
       composer?.removeEventListener('drop', onDrop);
-      win.removeEventListener('message', onMessage as EventListener);
+      unsubscribe();
     },
   };
 }
 
-declare const globalThis: { __EVENT4U_BOOTSTRAPPED__?: boolean };
+declare const globalThis: HostGlobals & { __EVENT4U_BOOTSTRAPPED__?: boolean };
 
-if (
-  typeof globalThis !== 'undefined' &&
-  typeof acquireVsCodeApi !== 'undefined' &&
-  !globalThis.__EVENT4U_BOOTSTRAPPED__
-) {
-  globalThis.__EVENT4U_BOOTSTRAPPED__ = true;
-  bootstrap({ document, window, vscode: acquireVsCodeApi() });
+if (typeof globalThis !== 'undefined' && !globalThis.__EVENT4U_BOOTSTRAPPED__) {
+  const bridge = detectHostBridge(globalThis, window);
+  if (bridge) {
+    globalThis.__EVENT4U_BOOTSTRAPPED__ = true;
+    bootstrap({ document, window, bridge });
+  }
 }

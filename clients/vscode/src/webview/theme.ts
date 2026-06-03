@@ -67,8 +67,24 @@ export function themeCss(): string {
       --e4u-status-streaming: var(--vscode-charts-blue, #4af);
       --e4u-status-error: var(--vscode-charts-red, #c84646);
     }
-    body { margin: 0; padding: 0; font-family: var(--vscode-font-family, sans-serif); color: var(--e4u-text); background: var(--e4u-surface); }
+    body { margin: 0; padding: 0; font-family: var(--vscode-font-family, sans-serif); color: var(--e4u-text); background: var(--e4u-surface); -webkit-font-smoothing: antialiased; }
     .e4u-app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* Form-control reset. VS Code injects a default webview stylesheet that
+       makes buttons/selects/inputs inherit the theme font — JCEF (Chromium)
+       has NO such defaults, so without this the controls render with UA
+       fonts and chrome. Keeping the reset here makes the bundle
+       self-sufficient on both hosts. */
+    button, select, textarea, input { font-family: inherit; font-size: inherit; color: inherit; }
+
+    /* Scrollbars — VS Code styles webview scrollbars by default; Chromium
+       inside JCEF shows chunky UA bars. Style them once for both hosts. */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background, rgba(128, 128, 128, 0.35)); border-radius: 5px; background-clip: padding-box; border: 2px solid transparent; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128, 128, 128, 0.5)); background-clip: padding-box; border: 2px solid transparent; }
+    ::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground, rgba(128, 128, 128, 0.6)); background-clip: padding-box; border: 2px solid transparent; }
+    ::-webkit-scrollbar-corner { background: transparent; }
 
     /* Header (C-1) */
     .e4u-header { display: flex; align-items: center; justify-content: space-between; height: var(--e4u-header-height); padding: 0 var(--e4u-space-md); border-bottom: 1px solid var(--e4u-border); flex-shrink: 0; }
@@ -120,7 +136,7 @@ export function themeCss(): string {
 
     /* Mode pill (C-4) */
     .e4u-pill { display: inline-flex; align-items: center; gap: var(--e4u-space-xs); height: var(--e4u-pill-height); padding: 0 var(--e4u-space-sm); border-radius: var(--e4u-radius-chip); background: var(--e4u-surface); color: var(--e4u-text); font-size: 0.8em; border: none; cursor: pointer; }
-    .e4u-pill:hover { background: var(--e4u-surface-inset); }
+    .e4u-pill:hover { background-color: var(--e4u-surface-inset); }
     .e4u-pill:focus-visible { outline: 1px solid var(--e4u-accent); }
     .e4u-pill__dot { width: var(--e4u-status-dot); height: var(--e4u-status-dot); border-radius: 50%; background: var(--e4u-status-ready); display: inline-block; }
     .e4u-mode-pill--ready .e4u-pill__dot { background: var(--e4u-status-ready); }
@@ -128,7 +144,12 @@ export function themeCss(): string {
     .e4u-mode-pill--error .e4u-pill__dot { background: var(--e4u-status-error); }
 
     /* Model pill (C-5) */
-    .e4u-model-pill { appearance: none; -webkit-appearance: none; padding-right: calc(var(--e4u-space-sm) + 12px); background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 12px) center, calc(100% - 8px) center; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
+    .e4u-model-pill { appearance: none; -webkit-appearance: none; padding-right: calc(var(--e4u-space-sm) + 12px); background-color: var(--e4u-surface); background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 12px) center, calc(100% - 8px) center; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; border: none; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .e4u-model-pill:hover { background-color: var(--e4u-surface-inset); }
+    .e4u-model-pill:focus-visible { outline: 1px solid var(--e4u-accent); }
+    /* The dropdown popup stays native, but color-scheme + explicit option
+       colors keep it dark-on-dark in Chromium instead of the UA white list. */
+    .e4u-model-pill option { background: var(--e4u-surface-inset); color: var(--e4u-text); }
 
     /* Halt card options (C-7 variant) */
     .e4u-halt-options { display: flex; flex-wrap: wrap; gap: var(--e4u-space-xs); margin-top: var(--e4u-space-xs); }
