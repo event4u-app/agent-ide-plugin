@@ -71,8 +71,16 @@ function makeAvailabilityProbe(
  */
 function resolveSidecarPath(context: vscode.ExtensionContext): string {
   const bundled = path.join(context.extensionPath, 'sidecar', 'server.js');
-  // Dev fallback: monorepo layout clients/vscode -> packages/core.
+  // Dev path: monorepo layout clients/vscode -> packages/core.
   const dev = path.join(context.extensionPath, '..', '..', 'packages', 'core', 'dist', 'server.js');
+  // In development (`--extensionDevelopmentPath`), prefer the LIVE monorepo
+  // build so core edits take effect on the next `task build` without a
+  // re-bundle — a stale `sidecar/server.js` from an earlier `vscode:package`
+  // must not shadow it. A packaged VSIX has no dev path, so it always uses the
+  // bundled sidecar (ADR-017).
+  if (context.extensionMode === vscode.ExtensionMode.Development && existsSync(dev)) {
+    return dev;
+  }
   return existsSync(bundled) ? bundled : dev;
 }
 
