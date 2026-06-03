@@ -105,6 +105,22 @@ function contract(
     expect(list.find((s) => s.id === b.id)?.messageCount).toBe(0);
   });
 
+  it('breaks an updatedAt tie deterministically by id (guards the handler-list flake)', async () => {
+    // A frozen clock makes both conversations share `updatedAt`; without a
+    // stable secondary sort key the order would be non-deterministic.
+    let n = 0;
+    const store = await makeStore({
+      now: () => '2026-01-01T00:00:00.000Z',
+      idFactory: () => `id-${++n}`,
+    });
+    await store.create({ title: 'A' }); // id-1
+    await store.create({ title: 'B' }); // id-2
+
+    const list = await store.list();
+    // Equal updatedAt → tiebreak by id descending (id-2 before id-1).
+    expect(list.map((s) => s.id)).toEqual(['id-2', 'id-1']);
+  });
+
   it('searches across titles and bodies with token-AND matching', async () => {
     const store = await makeStore(deterministicDeps());
     const a = await store.create({ title: 'Login flow' });

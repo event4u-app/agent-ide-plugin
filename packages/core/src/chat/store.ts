@@ -162,7 +162,14 @@ export abstract class BaseConversationStore implements ConversationStore {
 
   async list(): Promise<ConversationSummary[]> {
     const all = await this.loadAll();
-    return all.map(toSummary).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    // Newest-first by `updatedAt`, with `id` as a stable tiebreaker: two
+    // conversations touched in the same millisecond would otherwise compare
+    // equal and the sort order would be non-deterministic (the `handler-list`
+    // flake). Ids carry a monotonic counter (`conv-<ts>-<n>-<rand>`), so
+    // id-descending ≈ creation order, keeping the tiebreak newest-first too.
+    return all
+      .map(toSummary)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
   }
 
   async search(query: string, options?: SearchOptions): Promise<ConversationSearchResult[]> {
