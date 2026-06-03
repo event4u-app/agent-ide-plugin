@@ -7,7 +7,7 @@
 // AI council 2026-05-31, UNANIMOUS Fork 2A (copy the built single-file sidecar,
 // keep the spawned-process boundary); ADR-017.
 
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +30,15 @@ const sidecarDir = join(clientRoot, 'sidecar');
 mkdirSync(sidecarDir, { recursive: true });
 copyFileSync(sidecarSrc, join(sidecarDir, 'server.js'));
 console.log(`[bundle-sidecar] sidecar/server.js <- ${sidecarSrc}`);
+
+// The sidecar bundle is ESM (`packages/core` is `type:module`). Copied here it
+// sits OUTSIDE that package, so without a sibling module marker Node loads
+// `server.js` as CommonJS and the spawned process dies on the first `import`
+// ("Cannot use import statement outside a module" — exit 1, no comms, every
+// request times out). Pin the bundle dir to ESM so the packaged + dev sidecar
+// actually starts (ADR-017).
+writeFileSync(join(sidecarDir, 'package.json'), `${JSON.stringify({ type: 'module' }, null, 2)}\n`);
+console.log('[bundle-sidecar] sidecar/package.json (type:module)');
 
 if (existsSync(licenseSrc)) {
   copyFileSync(licenseSrc, join(clientRoot, 'LICENSE'));
