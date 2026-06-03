@@ -55,6 +55,21 @@ models:
     output_per_mtok: 0.40
     cache_read_per_mtok: 0.025
     context_window: 1000000
+  # Embedding models (T-806 follow-up, ADR-053). Price the hybrid-retrieval
+  # `activity: context-compression` step events. id == RemoteEmbedder.modelId
+  # (`${provider}:${model}`); embeddings bill input tokens only → output 0. An
+  # embedding model absent here is recorded at usd:0 (meta.priced=false), never
+  # throws. Indicative list prices as of 2026-06-02.
+  - id: 'openai:text-embedding-3-small'
+    family: openai
+    input_per_mtok: 0.02
+    output_per_mtok: 0
+    context_window: 8191
+  - id: 'voyage:voyage-code-3'
+    family: compat
+    input_per_mtok: 0.18
+    output_per_mtok: 0
+    context_window: 32000
 # T-506 — user-provided prices for OpenAI-compatible endpoints. Empty by default;
 # the bundled entry below documents the shape. Source: provider's own pricing page.
 custom_endpoints:
