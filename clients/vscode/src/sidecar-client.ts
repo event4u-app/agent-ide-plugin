@@ -56,6 +56,18 @@ export class SidecarClient {
     });
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => this.parser?.push(chunk));
+
+    // Surface the sidecar's own diagnostics. Without this the child's stderr
+    // (startup banner, crashes, a failed `ELECTRON_RUN_AS_NODE` spawn) is piped
+    // but never read, so a sidecar that never answers shows only a client-side
+    // request/stream timeout with no cause. These land in the Extension Host
+    // Developer Tools console.
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => console.error(`[sidecar] ${chunk.trimEnd()}`));
+    child.on('error', (err) => console.error('[sidecar] failed to spawn:', err));
+    child.on('exit', (code, signal) =>
+      console.error(`[sidecar] process exited (code=${code}, signal=${signal})`),
+    );
   }
 
   /** Send a request envelope and resolve with the correlated response. */
