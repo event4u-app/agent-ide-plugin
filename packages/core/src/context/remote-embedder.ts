@@ -16,6 +16,23 @@ import { FakeEmbedder, TransformersEmbedder, l2normalize, type Embedder } from '
 
 export type EmbeddingProvider = 'fake' | 'local' | 'voyage' | 'openai';
 
+/**
+ * Usage signal for ONE real remote embed call (T-806 follow-up, ADR-053).
+ * Local / fake embedders are free and never emit it. The tracking layer turns
+ * each into an `activity: "context-compression"` step event; this transport
+ * only reports the count, keeping the {@link Embedder} interface unchanged.
+ */
+export interface EmbedUsage {
+  /** Provider-billed tokens for this call (input only — embeddings have no output). */
+  tokens: number;
+  /** `${provider}:${model}` — the pricing-book + step-event model id. */
+  model: string;
+  /** Texts embedded in this call (cache-misses for an index batch; 1 per query). */
+  batch: number;
+}
+
+export type EmbedUsageCallback = (usage: EmbedUsage) => void;
+
 export interface RemoteEmbedderConfig {
   provider: 'voyage' | 'openai';
   apiKey: string;
@@ -40,6 +57,8 @@ export class RemoteEmbedder implements Embedder {
   constructor(
     private readonly config: RemoteEmbedderConfig,
     private readonly fetchFn: FetchFn = globalThis.fetch,
+    /** ADR-053 — fired once per real call with the provider-billed token count. */
+    private readonly onUsage?: EmbedUsageCallback,
   ) {
     this.modelId = `${config.provider}:${config.model}`;
     this.dimensions = config.dimensions;
@@ -62,10 +81,25 @@ export class RemoteEmbedder implements Embedder {
     if (!res.ok) {
       throw new Error(`Embedding request failed (${this.config.provider} ${res.status})`);
     }
-    const json = (await res.json()) as { data?: Array<{ embedding: number[] }> };
+    const json = (await res.json()) as {
+      data?: Array<{ embedding: number[] }>;
+      usage?: { total_tokens?: number; prompt_tokens?: number };
+    };
     const rows = json.data;
     if (!rows || rows.length !== texts.length) {
       throw new Error(`Embedding response shape mismatch (${this.config.provider})`);
+    }
+    // Cost accounting (ADR-053). Voyage returns `usage.total_tokens`, OpenAI
+    // `usage.total_tokens` (== prompt_tokens for embeddings). Fail-soft: a
+    // throwing tracker must NEVER break the embed — embeddings are an optional
+    // enhancement over BM25, and an abort already rejected above.
+    if (this.onUsage) {
+      const tokens = json.usage?.total_tokens ?? json.usage?.prompt_tokens ?? 0;
+      try {
+        this.onUsage({ tokens, model: this.modelId, batch: texts.length });
+      } catch {
+        // accounting is best-effort; the vectors are what the caller needs.
+      }
     }
     // Both APIs preserve input order in `data`; normalize so cosine = dot product.
     return rows.map((r) => l2normalize(Float32Array.from(r.embedding)));
@@ -87,7 +121,11 @@ export interface EmbeddingsConfig {
  * `voyage`/`openai` provider without an `apiKey` falls back to `fake` rather
  * than throwing — embeddings are an optional enhancement over BM25.
  */
-export function createEmbedder(config: EmbeddingsConfig = {}, fetchFn?: FetchFn): Embedder {
+export function createEmbedder(
+  config: EmbeddingsConfig = {},
+  fetchFn?: FetchFn,
+  onUsage?: EmbedUsageCallback,
+): Embedder {
   switch (config.provider) {
     case 'local':
       return new TransformersEmbedder({ model: config.model, dimensions: config.dimensions });
@@ -103,6 +141,7 @@ export function createEmbedder(config: EmbeddingsConfig = {}, fetchFn?: FetchFn)
           endpoint: config.endpoint,
         },
         fetchFn,
+        onUsage,
       );
     default:
       return new FakeEmbedder(config.dimensions);
@@ -128,13 +167,15 @@ function defaultRemoteModel(provider: 'voyage' | 'openai'): string {
 export function resolveActiveEmbedder(
   config: EmbeddingsConfig = {},
   fetchFn?: FetchFn,
+  onUsage?: EmbedUsageCallback,
 ): Embedder | undefined {
   switch (config.provider) {
     case 'local':
+      // `onUsage` is a remote-only signal (free local embeds emit nothing).
       return createEmbedder(config, fetchFn);
     case 'voyage':
     case 'openai':
-      return config.apiKey ? createEmbedder(config, fetchFn) : undefined;
+      return config.apiKey ? createEmbedder(config, fetchFn, onUsage) : undefined;
     default:
       return undefined;
   }

@@ -20,7 +20,17 @@ import { z } from 'zod';
  * for audit-trace.
  */
 
-export const ActivitySchema = z.enum(['agent', 'chat', 'cli-agent', 'skill', 'system', 'review']);
+export const ActivitySchema = z.enum([
+  'agent',
+  'chat',
+  'cli-agent',
+  'skill',
+  'system',
+  'review',
+  // T-806 follow-up (ADR-053) — one priced row per real remote embed call
+  // (voyage/openai). Local + fake embeds are free and never recorded.
+  'context-compression',
+]);
 export type Activity = z.infer<typeof ActivitySchema>;
 
 export const StepEventSchema = z.object({

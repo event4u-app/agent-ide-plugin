@@ -59,6 +59,64 @@ describe('RemoteEmbedder', () => {
   });
 });
 
+describe('RemoteEmbedder usage accounting (ADR-053)', () => {
+  it('fires onUsage with the provider-billed tokens, model id, and batch size', async () => {
+    const onUsage = vi.fn();
+    const e = new RemoteEmbedder(
+      { provider: 'openai', apiKey: 'k', model: 'text-embedding-3-small', dimensions: 2 },
+      async () => jsonResponse({ data: [{ embedding: [3, 4] }], usage: { total_tokens: 42 } }),
+      onUsage,
+    );
+    await e.embed(['x']);
+    expect(onUsage).toHaveBeenCalledWith({
+      tokens: 42,
+      model: 'openai:text-embedding-3-small',
+      batch: 1,
+    });
+  });
+
+  it('falls back to prompt_tokens, then 0, when total_tokens is absent', async () => {
+    const seen: number[] = [];
+    const onUsage = (u: { tokens: number }) => void seen.push(u.tokens);
+    const promptOnly = new RemoteEmbedder(
+      { provider: 'openai', apiKey: 'k', model: 'm', dimensions: 2 },
+      async () => jsonResponse({ data: [{ embedding: [1, 0] }], usage: { prompt_tokens: 7 } }),
+      onUsage,
+    );
+    await promptOnly.embed(['x']);
+    const noUsage = new RemoteEmbedder(
+      { provider: 'openai', apiKey: 'k', model: 'm', dimensions: 2 },
+      async () => jsonResponse({ data: [{ embedding: [1, 0] }] }),
+      onUsage,
+    );
+    await noUsage.embed(['x']);
+    expect(seen).toEqual([7, 0]);
+  });
+
+  it('is fail-soft — a throwing onUsage never breaks the embed', async () => {
+    const e = new RemoteEmbedder(
+      { provider: 'openai', apiKey: 'k', model: 'm', dimensions: 2 },
+      async () => jsonResponse({ data: [{ embedding: [3, 4] }], usage: { total_tokens: 9 } }),
+      () => {
+        throw new Error('tracking exploded');
+      },
+    );
+    const [v] = await e.embed(['x']);
+    expect(v![0]).toBeCloseTo(0.6, 5);
+  });
+
+  it('threads onUsage through resolveActiveEmbedder for a keyed remote provider', async () => {
+    const onUsage = vi.fn();
+    const e = resolveActiveEmbedder(
+      { provider: 'voyage', apiKey: 'k', model: 'voyage-code-3', dimensions: 2 },
+      async () => jsonResponse({ data: [{ embedding: [0, 1] }], usage: { total_tokens: 5 } }),
+      onUsage,
+    );
+    await e!.embed(['q']);
+    expect(onUsage).toHaveBeenCalledWith({ tokens: 5, model: 'voyage:voyage-code-3', batch: 1 });
+  });
+});
+
 describe('createEmbedder', () => {
   it('defaults to the dependency-free FakeEmbedder', () => {
     expect(createEmbedder()).toBeInstanceOf(FakeEmbedder);
