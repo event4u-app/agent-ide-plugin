@@ -19,6 +19,11 @@
             id="event4u-agent.status"
             implementation="de.event4u.agent.statusbar.AgentStatusBarWidgetFactory"
             order="last"/>
+        <!-- T-1304 / T-PRD07 — workspace index-status widget. -->
+        <statusBarWidgetFactory
+            id="event4u-agent.index-status"
+            implementation="de.event4u.agent.statusbar.AgentIndexStatusWidgetFactory"
+            order="before event4u-agent.status"/>
         <applicationConfigurable
             parentId="tools"
             instance="de.event4u.agent.settings.AgentConfigurable"
@@ -27,6 +32,8 @@
         <applicationService serviceImplementation="de.event4u.agent.settings.AgentSettings"/>
         <!-- T-MR10 — multi-project: auto-detect open module content roots. -->
         <projectService serviceImplementation="de.event4u.agent.workspace.WorkspaceFolderService"/>
+        <!-- T-1304 / T-PRD07 — holds the latest per-root index status for the widget. -->
+        <projectService serviceImplementation="de.event4u.agent.statusbar.IndexStatusService"/>
         <postStartupActivity implementation="de.event4u.agent.workspace.WorkspaceFolderStartup"/>
     </extensions>
 
